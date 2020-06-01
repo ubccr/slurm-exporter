@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
@@ -39,6 +40,11 @@ type JobsCollector struct {
 	timeout     *prometheus.Desc
 	preempted   *prometheus.Desc
 	nodeFail    *prometheus.Desc
+	waitTime    *prometheus.Desc
+	waitTimeGpu *prometheus.Desc
+	waitTime128 *prometheus.Desc
+	waitTime256 *prometheus.Desc
+	startTime   *prometheus.Desc
 }
 
 type jobMetrics struct {
@@ -54,6 +60,23 @@ type jobMetrics struct {
 	timeout     float64
 	preempted   float64
 	nodeFail    float64
+	waitTime    float64
+	waitTimeGpu float64
+	waitTime128 float64
+	waitTime256 float64
+	startTime   float64
+}
+
+type timeMetric struct {
+	total int64
+	count int
+}
+
+func (t *timeMetric) average() float64 {
+	if t.count == 0 {
+		return 0.0
+	}
+	return float64(t.total) / float64(t.count)
 }
 
 func NewJobsCollector(client *slurmrest.APIClient) *JobsCollector {
@@ -71,6 +94,11 @@ func NewJobsCollector(client *slurmrest.APIClient) *JobsCollector {
 		timeout:     prometheus.NewDesc("slurm_queue_timeout", "Jobs stopped by timeout", nil, nil),
 		preempted:   prometheus.NewDesc("slurm_queue_preempted", "Number of preempted jobs", nil, nil),
 		nodeFail:    prometheus.NewDesc("slurm_queue_node_fail", "Number of jobs stopped due to node fail", nil, nil),
+		waitTime:    prometheus.NewDesc("slurm_queue_wait_time", "Average wait time of running jobs", nil, nil),
+		waitTimeGpu: prometheus.NewDesc("slurm_queue_wait_time_gpu", "Average wait time of running jobs that requested GPU", nil, nil),
+		waitTime128: prometheus.NewDesc("slurm_queue_wait_time_128", "Average wait time of running jobs that requested 128G RAM or greater", nil, nil),
+		waitTime256: prometheus.NewDesc("slurm_queue_wait_time_256", "Average wait time of running jobs that requested 256G RAM or greater", nil, nil),
+		startTime:   prometheus.NewDesc("slurm_queue_start_time", "Average estimated start time of pending jobs", nil, nil),
 	}
 }
 
@@ -88,15 +116,57 @@ func (jc *JobsCollector) metrics() *jobMetrics {
 		return &jm
 	}
 
+	waitTime := &timeMetric{}
+	waitTimeGpu := &timeMetric{}
+	waitTime128 := &timeMetric{}
+	waitTime256 := &timeMetric{}
+	startTime := &timeMetric{}
+	now := time.Now().Local().Unix()
+
 	for _, j := range jobs {
+
 		switch j.JobState {
 		case "PENDING":
 			jm.pending++
 			if j.StateReason == "Dependency" {
 				jm.pendingDep++
 			}
+			if j.StartTime >= now {
+				startTime.count++
+				startTime.total += j.StartTime - now
+			}
 		case "RUNNING":
 			jm.running++
+			waitTime.count++
+			waitTime.total += j.StartTime - j.SubmitTime
+			tres := parseTres(j.TresAllocStr)
+			if tres.GresGpu > 0 {
+				log.WithFields(log.Fields{
+					"job_id":    j.JobId,
+					"partition": j.Partition,
+					"wait_time": j.StartTime - j.SubmitTime,
+				}).Info("GPU Job")
+				waitTimeGpu.count++
+				waitTimeGpu.total += j.StartTime - j.SubmitTime
+			}
+			if (tres.Memory / uint64(tres.Node)) >= 128000000000 {
+				log.WithFields(log.Fields{
+					"job_id":    j.JobId,
+					"partition": j.Partition,
+					"wait_time": j.StartTime - j.SubmitTime,
+				}).Info("Large Mem 128G Job")
+				waitTime128.count++
+				waitTime128.total += j.StartTime - j.SubmitTime
+			}
+			if (tres.Memory / uint64(tres.Node)) >= 256000000000 {
+				log.WithFields(log.Fields{
+					"job_id":    j.JobId,
+					"partition": j.Partition,
+					"wait_time": j.StartTime - j.SubmitTime,
+				}).Info("Large Mem 256G Job")
+				waitTime256.count++
+				waitTime256.total += j.StartTime - j.SubmitTime
+			}
 		case "SUSPENDED":
 			jm.suspended++
 		case "CANCELLED":
@@ -118,6 +188,12 @@ func (jc *JobsCollector) metrics() *jobMetrics {
 		}
 	}
 
+	jm.waitTime = waitTime.average()
+	jm.waitTimeGpu = waitTimeGpu.average()
+	jm.waitTime128 = waitTime128.average()
+	jm.waitTime256 = waitTime256.average()
+	jm.startTime = startTime.average()
+
 	return &jm
 }
 
@@ -134,6 +210,11 @@ func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- jc.timeout
 	ch <- jc.preempted
 	ch <- jc.nodeFail
+	ch <- jc.waitTime
+	ch <- jc.waitTimeGpu
+	ch <- jc.waitTime128
+	ch <- jc.waitTime256
+	ch <- jc.startTime
 }
 
 func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -150,4 +231,9 @@ func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(jc.timeout, prometheus.GaugeValue, jm.timeout)
 	ch <- prometheus.MustNewConstMetric(jc.preempted, prometheus.GaugeValue, jm.preempted)
 	ch <- prometheus.MustNewConstMetric(jc.nodeFail, prometheus.GaugeValue, jm.nodeFail)
+	ch <- prometheus.MustNewConstMetric(jc.waitTime, prometheus.GaugeValue, jm.waitTime)
+	ch <- prometheus.MustNewConstMetric(jc.waitTimeGpu, prometheus.GaugeValue, jm.waitTimeGpu)
+	ch <- prometheus.MustNewConstMetric(jc.waitTime128, prometheus.GaugeValue, jm.waitTime128)
+	ch <- prometheus.MustNewConstMetric(jc.waitTime256, prometheus.GaugeValue, jm.waitTime256)
+	ch <- prometheus.MustNewConstMetric(jc.startTime, prometheus.GaugeValue, jm.startTime)
 }

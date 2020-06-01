@@ -156,7 +156,13 @@ func (nc *NodesCollector) metrics() *nodeMetrics {
 		}
 
 		// GPUs
-		// XXX remove this soon
+		tres := parseTres(n.Tres)
+		if tres.GresGpu == 0 {
+			continue
+		}
+
+		// XXX remove this soon. We don't really want to limit by partition.
+		// talk to jbednasz for the rationale :)
 		found := false
 		for _, p := range partFilter {
 			if strings.Contains(n.Partitions, p) {
@@ -169,8 +175,10 @@ func (nc *NodesCollector) metrics() *nodeMetrics {
 			continue
 		}
 
-		avail := gpuCountFromTres(n.Tres)
-		alloc := gpuCountFromTres(n.TresUsed)
+		tresUsed := parseTres(n.TresUsed)
+
+		avail := tres.GresGpu
+		alloc := tresUsed.GresGpu
 		idle := avail - alloc
 		if n.IdleCpus == 0 {
 			// No cores available so can't possibly get a GPU
