@@ -192,7 +192,8 @@ func (jc *JobsCollector) metrics() *jobMetrics {
 				waitTimeGpu.count++
 				waitTimeGpu.total += j.StartTime - j.SubmitTime
 			}
-			if (tres.Memory / uint64(tres.Node)) >= 128000000000 {
+			if (tres.Memory/uint64(tres.Node)) >= 128000000000 &&
+				(tres.Memory/uint64(tres.Node)) < 256000000000 {
 				log.WithFields(log.Fields{
 					"job_id":    j.JobId,
 					"partition": j.Partition,
