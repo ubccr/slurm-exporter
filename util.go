@@ -21,17 +21,23 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/dustin/go-humanize"
 )
 
 var (
 	// Regexp to parse GPU Gres and GresUsed strings. Example looks like this:
 	//   gpu:tesla_v100-pcie-16gb:2(S:0-1)
 	gpuGresPattern = regexp.MustCompile(`^gpu\:([^\:]+)\:?(\d+)?`)
-
-	// Regexp to parse Tres and TresUsed strings. Example looks like this:
-	//   cpu=32,mem=187000M,billing=32,gres/gpu=2
-	gpuTresPattern = regexp.MustCompile(`^gres\/gpu\=(\d+)`)
 )
+
+type Tres struct {
+	Memory  uint64
+	CPU     int
+	Node    int
+	Billing int
+	GresGpu int
+}
 
 // gpuCountFromGres parses Slurm GRES (generic resource) line and returns the
 // count of GPUs
@@ -57,22 +63,28 @@ func gpuCountFromGres(line string) int {
 	return value
 }
 
-// gpuCountFromTres parses Slurm TRES (Trackable RESources) line and returns
-// the count of GPUs
-func gpuCountFromTres(line string) int {
-	value := 0
+// parseTres parses Slurm TRES (Trackable RESources) line. Example looks like:
+// cpu=32,mem=187000M,billing=32,gres/gpu=2
+func parseTres(line string) *Tres {
+	var tres Tres
 
-	tres := strings.Split(line, ",")
-	for _, g := range tres {
-		if !strings.HasPrefix(g, "gres") {
-			continue
-		}
+	items := strings.Split(line, ",")
+	for _, item := range items {
+		kv := strings.Split(item, "=")
+		switch kv[0] {
+		case "cpu":
+			tres.CPU, _ = strconv.Atoi(kv[1])
+		case "node":
+			tres.Node, _ = strconv.Atoi(kv[1])
+		case "billing":
+			tres.Billing, _ = strconv.Atoi(kv[1])
+		case "gres/gpu":
+			tres.GresGpu, _ = strconv.Atoi(kv[1])
+		case "mem":
+			tres.Memory, _ = humanize.ParseBytes(kv[1])
 
-		matches := gpuTresPattern.FindStringSubmatch(g)
-		if len(matches) == 2 {
-			value, _ = strconv.Atoi(matches[1])
 		}
 	}
 
-	return value
+	return &tres
 }
