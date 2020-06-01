@@ -115,7 +115,7 @@ func (nc *NodesCollector) metrics() *nodeMetrics {
 	} else if resp.StatusCode != 200 {
 		log.WithFields(log.Fields{
 			"status_code": resp.StatusCode,
-		}).Error("Requested path not found")
+		}).Error("HTTP response not OK while fetching nodes from slurm rest api")
 		return &nm
 	}
 

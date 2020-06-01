@@ -65,6 +65,7 @@ func main() {
 
 	client := slurmrest.NewAPIClient(cfg)
 	prometheus.MustRegister(NewNodesCollector(client))
+	prometheus.MustRegister(NewSchedulerCollector(client))
 
 	log.Infof("Starting Server: %s", *listenAddress)
 	http.Handle("/metrics", promhttp.Handler())
