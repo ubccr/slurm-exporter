@@ -20,7 +20,6 @@ package main
 import (
 	"context"
 	"regexp"
-	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
@@ -28,7 +27,6 @@ import (
 )
 
 var (
-	partFilter   = []string{"general-compute", "cascade", "gpu"}
 	allocPattern = regexp.MustCompile(`^ALLOC`)
 	compPattern  = regexp.MustCompile(`^COMP`)
 	downPattern  = regexp.MustCompile(`^DOWN`)
@@ -158,20 +156,6 @@ func (nc *NodesCollector) metrics() *nodeMetrics {
 		// GPUs
 		tres := parseTres(n.Tres)
 		if tres.GresGpu == 0 {
-			continue
-		}
-
-		// XXX remove this soon. We don't really want to limit by partition.
-		// talk to jbednasz for the rationale :)
-		found := false
-		for _, p := range partFilter {
-			if strings.Contains(n.Partitions, p) {
-				found = true
-				break
-			}
-		}
-
-		if !found {
 			continue
 		}
 
