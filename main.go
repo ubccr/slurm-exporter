@@ -26,7 +26,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
-	"github.com/ubccr/go-slurmrest"
+	"github.com/ubccr/slurmrest"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -62,6 +62,8 @@ func main() {
 	}
 	cfg := slurmrest.NewConfiguration()
 	cfg.HTTPClient = &http.Client{Timeout: time.Second * 3600, Transport: tr}
+    cfg.Scheme = "http"
+    cfg.Host = "localhost"
 
 	client := slurmrest.NewAPIClient(cfg)
 	prometheus.MustRegister(NewNodesCollector(client))

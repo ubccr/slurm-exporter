@@ -22,7 +22,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
-	"github.com/ubccr/go-slurmrest"
+	"github.com/ubccr/slurmrest"
 )
 
 type SchedulerCollector struct {
@@ -97,7 +97,8 @@ func NewSchedulerCollector(client *slurmrest.APIClient) *SchedulerCollector {
 func (sc *SchedulerCollector) metrics() *diagMetrics {
 	var dm diagMetrics
 
-	diag, resp, err := sc.client.DefaultApi.Diag(context.Background())
+	req := sc.client.SlurmApi.SlurmctldDiag(context.Background())
+	diag, resp, err := sc.client.SlurmApi.SlurmctldDiagExecute(req)
 	if err != nil {
 		log.Errorf("Failed to diag from slurm rest api: %s", err)
 		return &dm
@@ -108,16 +109,14 @@ func (sc *SchedulerCollector) metrics() *diagMetrics {
 		return &dm
 	}
 
-	dm.threads = float64(diag.Statistics.ServerThreadCount)
-	dm.queueSize = float64(diag.Statistics.AgentQueueSize)
-	dm.lastCycle = float64(diag.Statistics.ScheduleCycleLast)
-	dm.meanCycle = float64(diag.Statistics.ScheduleCycleSum) / float64(diag.Statistics.ScheduleCycleCounter)
-	if diag.Statistics.ReqTime-diag.Statistics.ReqTimeStart > 60 {
-		dm.cyclePerMinute = float64(diag.Statistics.ScheduleCycleCounter) / ((float64(diag.Statistics.ReqTime) - float64(diag.Statistics.ReqTimeStart)) / float64(60))
-	}
-	dm.backfillLastCycle = float64(diag.Statistics.BfCycleLast)
-	dm.backfillMeanCycle = float64(diag.Statistics.BfCycleSum) / float64(diag.Statistics.BfCycleCounter)
-	dm.backfillDepthMean = float64(diag.Statistics.BfDepthSum) / float64(diag.Statistics.BfCycleCounter)
+	dm.threads = float64(diag.Statistics.GetServerThreadCount())
+	dm.queueSize = float64(diag.Statistics.GetAgentQueueSize())
+	dm.lastCycle = float64(diag.Statistics.GetScheduleCycleLast())
+	dm.meanCycle = float64(diag.Statistics.GetScheduleCycleMean())
+    dm.cyclePerMinute = float64(diag.Statistics.GetScheduleCyclePerMinute())
+	dm.backfillLastCycle = float64(diag.Statistics.GetBfCycleLast())
+	dm.backfillMeanCycle = float64(diag.Statistics.GetBfCycleMean())
+	dm.backfillDepthMean = float64(diag.Statistics.GetBfDepthMean())
 
 	return &dm
 }

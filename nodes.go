@@ -23,7 +23,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
-	"github.com/ubccr/go-slurmrest"
+	"github.com/ubccr/slurmrest"
 )
 
 var (
@@ -106,7 +106,8 @@ func NewNodesCollector(client *slurmrest.APIClient) *NodesCollector {
 func (nc *NodesCollector) metrics() *nodeMetrics {
 	var nm nodeMetrics
 
-	nodeInfo, resp, err := nc.client.DefaultApi.Nodes(context.Background())
+	req := nc.client.SlurmApi.SlurmctldGetNodes(context.Background())
+	nodeInfo, resp, err := nc.client.SlurmApi.SlurmctldGetNodesExecute(req)
 	if err != nil {
 		log.Errorf("Failed to fetch nodes from slurm rest api: %s", err)
 		return &nm
@@ -117,59 +118,59 @@ func (nc *NodesCollector) metrics() *nodeMetrics {
 		return &nm
 	}
 
-	for _, n := range nodeInfo.Nodes {
+	for _, n := range nodeInfo.GetNodes() {
 		// Node states
 		switch {
-		case allocPattern.MatchString(n.State):
+		case allocPattern.MatchString(n.GetState()):
 			nm.alloc++
-		case compPattern.MatchString(n.State):
+		case compPattern.MatchString(n.GetState()):
 			nm.comp++
-		case downPattern.MatchString(n.State):
+		case downPattern.MatchString(n.GetState()):
 			nm.down++
-		case drainPattern.MatchString(n.State):
+		case drainPattern.MatchString(n.GetState()):
 			nm.drain++
-		case failPattern.MatchString(n.State):
+		case failPattern.MatchString(n.GetState()):
 			nm.fail++
-		case errPattern.MatchString(n.State):
+		case errPattern.MatchString(n.GetState()):
 			nm.err++
-		case idlePattern.MatchString(n.State):
+		case idlePattern.MatchString(n.GetState()):
 			nm.idle++
-		case maintPattern.MatchString(n.State):
+		case maintPattern.MatchString(n.GetState()):
 			nm.maint++
-		case mixPattern.MatchString(n.State):
+		case mixPattern.MatchString(n.GetState()):
 			nm.mix++
-		case resvPattern.MatchString(n.State):
+		case resvPattern.MatchString(n.GetState()):
 			nm.resv++
 		}
 
 		// CPUs
-		nm.cpuTotal += float64(n.Cpus)
-		nm.cpuAlloc += float64(n.AllocCpus)
+		nm.cpuTotal += float64(n.GetCpus())
+		nm.cpuAlloc += float64(n.GetAllocCpus())
 
-		if drainPattern.MatchString(n.State) || downPattern.MatchString(n.State) ||
-			failPattern.MatchString(n.State) || errPattern.MatchString(n.State) {
-			nm.cpuOther += float64(n.IdleCpus)
+		if drainPattern.MatchString(n.GetState()) || downPattern.MatchString(n.GetState()) ||
+			failPattern.MatchString(n.GetState()) || errPattern.MatchString(n.GetState()) {
+			nm.cpuOther += float64(n.GetIdleCpus())
 		} else {
-			nm.cpuIdle += float64(n.IdleCpus)
+			nm.cpuIdle += float64(n.GetIdleCpus())
 		}
 
 		// GPUs
-		tres := parseTres(n.Tres)
+		tres := parseTres(n.GetTres())
 		if tres.GresGpu == 0 {
 			continue
 		}
 
-		tresUsed := parseTres(n.TresUsed)
+		tresUsed := parseTres(n.GetTresUsed())
 
 		avail := tres.GresGpu
 		alloc := tresUsed.GresGpu
 		idle := avail - alloc
-		if n.IdleCpus == 0 {
+		if n.GetIdleCpus() == 0 {
 			// No cores available so can't possibly get a GPU
 			idle = 0
-		} else if idle > int(n.IdleCpus) {
+		} else if idle > int(n.GetIdleCpus()) {
 			// Less cores than idle GPUs so adjust accordingly
-			idle = idle - int(n.IdleCpus)
+			idle = idle - int(n.GetIdleCpus())
 		}
 
 		nm.gpuAlloc += float64(alloc)

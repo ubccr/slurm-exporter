@@ -23,7 +23,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
-	"github.com/ubccr/go-slurmrest"
+	"github.com/ubccr/slurmrest"
 )
 
 type JobsCollector struct {
@@ -141,7 +141,8 @@ func NewJobsCollector(client *slurmrest.APIClient) *JobsCollector {
 func (jc *JobsCollector) metrics() *jobMetrics {
 	var jm jobMetrics
 
-	jobs, resp, err := jc.client.DefaultApi.Jobs(context.Background())
+	req := jc.client.SlurmApi.SlurmctldGetJobs(context.Background())
+	jobs, resp, err := jc.client.SlurmApi.SlurmctldGetJobsExecute(req)
 	if err != nil {
 		log.Errorf("Failed to fetch jobs from slurm rest api: %s", err)
 		return &jm
@@ -159,57 +160,57 @@ func (jc *JobsCollector) metrics() *jobMetrics {
 	startTime := &timeMetric{}
 	now := time.Now().Local().Unix()
 
-	for _, j := range jobs {
-		tres := parseTres(j.TresAllocStr)
+	for _, j := range jobs.GetJobs() {
+		tres := parseTres(j.GetTresAllocStr())
 
-		switch j.JobState {
+		switch j.GetJobState() {
 		case "PENDING":
 			jm.pending++
-			if j.StateReason == "Dependency" {
+			if j.GetStateReason() == "Dependency" {
 				jm.pendingDep++
 			}
-			if j.StartTime >= now {
+			if j.GetStartTime() >= now {
 				startTime.count++
-				startTime.total += j.StartTime - now
+				startTime.total += j.GetStartTime() - now
 			}
 			if tres.GresGpu > 0 {
 				jm.gpuPending++
-				if j.StateReason == "Dependency" {
+				if j.GetStateReason() == "Dependency" {
 					jm.gpuPendingDep++
 				}
 			}
 		case "RUNNING":
 			jm.running++
 			waitTime.count++
-			waitTime.total += j.StartTime - j.SubmitTime
+			waitTime.total += j.GetStartTime() - j.GetSubmitTime()
 			if tres.GresGpu > 0 {
 				jm.gpuRunning++
 				log.WithFields(log.Fields{
-					"job_id":    j.JobId,
-					"partition": j.Partition,
-					"wait_time": j.StartTime - j.SubmitTime,
+					"job_id":    j.GetJobId(),
+					"partition": j.GetPartition(),
+					"wait_time": j.GetStartTime() - j.GetSubmitTime(),
 				}).Info("GPU Job")
 				waitTimeGpu.count++
-				waitTimeGpu.total += j.StartTime - j.SubmitTime
+				waitTimeGpu.total += j.GetStartTime() - j.GetSubmitTime()
 			}
 			if (tres.Memory/uint64(tres.Node)) >= 128000000000 &&
 				(tres.Memory/uint64(tres.Node)) < 256000000000 {
 				log.WithFields(log.Fields{
-					"job_id":    j.JobId,
-					"partition": j.Partition,
-					"wait_time": j.StartTime - j.SubmitTime,
+					"job_id":    j.GetJobId(),
+					"partition": j.GetPartition(),
+					"wait_time": j.GetStartTime() - j.GetSubmitTime(),
 				}).Info("Large Mem 128G Job")
 				waitTime128.count++
-				waitTime128.total += j.StartTime - j.SubmitTime
+				waitTime128.total += j.GetStartTime() - j.GetSubmitTime()
 			}
 			if (tres.Memory / uint64(tres.Node)) >= 256000000000 {
 				log.WithFields(log.Fields{
-					"job_id":    j.JobId,
-					"partition": j.Partition,
-					"wait_time": j.StartTime - j.SubmitTime,
+					"job_id":    j.GetJobId(),
+					"partition": j.GetPartition(),
+					"wait_time": j.GetStartTime() - j.GetSubmitTime(),
 				}).Info("Large Mem 256G Job")
 				waitTime256.count++
-				waitTime256.total += j.StartTime - j.SubmitTime
+				waitTime256.total += j.GetStartTime() - j.GetSubmitTime()
 			}
 		case "SUSPENDED":
 			jm.suspended++
