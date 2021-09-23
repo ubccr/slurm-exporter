@@ -27,16 +27,16 @@ import (
 )
 
 var (
-	allocPattern = regexp.MustCompile(`^ALLOC`)
-	compPattern  = regexp.MustCompile(`^COMP`)
-	downPattern  = regexp.MustCompile(`^DOWN`)
-	drainPattern = regexp.MustCompile(`^DRAIN`)
-	failPattern  = regexp.MustCompile(`^FAIL`)
-	errPattern   = regexp.MustCompile(`^ERR`)
-	idlePattern  = regexp.MustCompile(`^IDLE`)
-	maintPattern = regexp.MustCompile(`^MAINT`)
-	mixPattern   = regexp.MustCompile(`^MIX`)
-	resvPattern  = regexp.MustCompile(`^RES`)
+	allocPattern = regexp.MustCompile(`(?i)^ALLOC`)
+	compPattern  = regexp.MustCompile(`(?i)^COMP`)
+	downPattern  = regexp.MustCompile(`(?i)^DOWN`)
+	drainPattern = regexp.MustCompile(`(?i)^DRAIN`)
+	failPattern  = regexp.MustCompile(`(?i)^FAIL`)
+	errPattern   = regexp.MustCompile(`(?i)^ERR`)
+	idlePattern  = regexp.MustCompile(`(?i)^IDLE`)
+	maintPattern = regexp.MustCompile(`(?i)^MAINT`)
+	mixPattern   = regexp.MustCompile(`(?i)^MIX`)
+	resvPattern  = regexp.MustCompile(`(?i)^RES`)
 )
 
 type NodesCollector struct {
