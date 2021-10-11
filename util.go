@@ -18,13 +18,16 @@
 package main
 
 import (
+	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/client_golang/prometheus"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
@@ -103,4 +106,31 @@ func parseTres(line string) *Tres {
 	}
 
 	return &tres
+}
+
+type FloatBucketValues []float64
+
+func (i *FloatBucketValues) Set(value string) error {
+	buckets := []float64{}
+	bucketFloats := strings.Split(value, ",")
+	for _, bucketFloat := range bucketFloats {
+		float, err := strconv.ParseFloat(bucketFloat, 64)
+		if err != nil {
+			return fmt.Errorf("'%s' is not a valid bucket float64", value)
+		}
+		buckets = append(buckets, float)
+	}
+	sort.Float64s(buckets)
+	*i = buckets
+	return nil
+}
+
+func (d *FloatBucketValues) String() string {
+	return ""
+}
+
+func FloatBuckets(s kingpin.Settings) (target *[]float64) {
+	target = &[]float64{}
+	s.SetValue((*FloatBucketValues)(target))
+	return
 }
