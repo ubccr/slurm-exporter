@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -138,19 +139,20 @@ func NewJobsCollector(client *slurmrest.APIClient) *JobsCollector {
 	}
 }
 
-func (jc *JobsCollector) metrics() *jobMetrics {
+func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	var jm jobMetrics
 
 	req := jc.client.SlurmApi.SlurmctldGetJobs(context.Background())
 	jobs, resp, err := jc.client.SlurmApi.SlurmctldGetJobsExecute(req)
 	if err != nil {
 		log.Errorf("Failed to fetch jobs from slurm rest api: %s", err)
-		return &jm
+		return &jm, err
 	} else if resp.StatusCode != 200 {
+		err = fmt.Errorf("HTTP response not OK while fetching jobs from slurm rest api")
 		log.WithFields(log.Fields{
 			"status_code": resp.StatusCode,
-		}).Error("HTTP response not OK while fetching jobs from slurm rest api")
-		return &jm
+		}).Error(err)
+		return &jm, err
 	}
 
 	waitTime := &timeMetric{}
@@ -266,7 +268,7 @@ func (jc *JobsCollector) metrics() *jobMetrics {
 	jm.waitTime256 = waitTime256.average()
 	jm.startTime = startTime.average()
 
-	return &jm
+	return &jm, err
 }
 
 func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -302,7 +304,11 @@ func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
-	jm := jc.metrics()
+	var errValue float64
+	jm, err := jc.metrics()
+	if err != nil {
+		errValue = 1
+	}
 	ch <- prometheus.MustNewConstMetric(jc.pending, prometheus.GaugeValue, jm.pending)
 	ch <- prometheus.MustNewConstMetric(jc.pendingDep, prometheus.GaugeValue, jm.pendingDep)
 	ch <- prometheus.MustNewConstMetric(jc.running, prometheus.GaugeValue, jm.running)
@@ -332,4 +338,5 @@ func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(jc.gpuTimeout, prometheus.GaugeValue, jm.gpuTimeout)
 	ch <- prometheus.MustNewConstMetric(jc.gpuPreempted, prometheus.GaugeValue, jm.gpuPreempted)
 	ch <- prometheus.MustNewConstMetric(jc.gpuNodeFail, prometheus.GaugeValue, jm.gpuNodeFail)
+	ch <- prometheus.MustNewConstMetric(collectError, prometheus.GaugeValue, errValue, "jobs")
 }

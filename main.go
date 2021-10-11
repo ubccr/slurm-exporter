@@ -62,8 +62,8 @@ func main() {
 	}
 	cfg := slurmrest.NewConfiguration()
 	cfg.HTTPClient = &http.Client{Timeout: time.Second * 3600, Transport: tr}
-    cfg.Scheme = "http"
-    cfg.Host = "localhost"
+	cfg.Scheme = "http"
+	cfg.Host = "localhost"
 
 	client := slurmrest.NewAPIClient(cfg)
 	prometheus.MustRegister(NewNodesCollector(client))

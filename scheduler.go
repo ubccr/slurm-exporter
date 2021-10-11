@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
@@ -94,31 +95,32 @@ func NewSchedulerCollector(client *slurmrest.APIClient) *SchedulerCollector {
 	}
 }
 
-func (sc *SchedulerCollector) metrics() *diagMetrics {
+func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	var dm diagMetrics
 
 	req := sc.client.SlurmApi.SlurmctldDiag(context.Background())
 	diag, resp, err := sc.client.SlurmApi.SlurmctldDiagExecute(req)
 	if err != nil {
 		log.Errorf("Failed to diag from slurm rest api: %s", err)
-		return &dm
+		return &dm, err
 	} else if resp.StatusCode != 200 {
+		err = fmt.Errorf("HTTP response not OK while fetching diag from slurm rest api")
 		log.WithFields(log.Fields{
 			"status_code": resp.StatusCode,
-		}).Error("HTTP response not OK while fetching diag from slurm rest api")
-		return &dm
+		}).Error(err)
+		return &dm, err
 	}
 
 	dm.threads = float64(diag.Statistics.GetServerThreadCount())
 	dm.queueSize = float64(diag.Statistics.GetAgentQueueSize())
 	dm.lastCycle = float64(diag.Statistics.GetScheduleCycleLast())
 	dm.meanCycle = float64(diag.Statistics.GetScheduleCycleMean())
-    dm.cyclePerMinute = float64(diag.Statistics.GetScheduleCyclePerMinute())
+	dm.cyclePerMinute = float64(diag.Statistics.GetScheduleCyclePerMinute())
 	dm.backfillLastCycle = float64(diag.Statistics.GetBfCycleLast())
 	dm.backfillMeanCycle = float64(diag.Statistics.GetBfCycleMean())
 	dm.backfillDepthMean = float64(diag.Statistics.GetBfDepthMean())
 
-	return &dm
+	return &dm, nil
 }
 
 func (sc *SchedulerCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -133,7 +135,11 @@ func (sc *SchedulerCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 func (sc *SchedulerCollector) Collect(ch chan<- prometheus.Metric) {
-	sm := sc.metrics()
+	var errValue float64
+	sm, err := sc.metrics()
+	if err != nil {
+		errValue = 1
+	}
 	ch <- prometheus.MustNewConstMetric(sc.threads, prometheus.GaugeValue, sm.threads)
 	ch <- prometheus.MustNewConstMetric(sc.queueSize, prometheus.GaugeValue, sm.queueSize)
 	ch <- prometheus.MustNewConstMetric(sc.lastCycle, prometheus.GaugeValue, sm.lastCycle)
@@ -142,4 +148,5 @@ func (sc *SchedulerCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(sc.backfillLastCycle, prometheus.GaugeValue, sm.backfillLastCycle)
 	ch <- prometheus.MustNewConstMetric(sc.backfillMeanCycle, prometheus.GaugeValue, sm.backfillMeanCycle)
 	ch <- prometheus.MustNewConstMetric(sc.backfillDepthMean, prometheus.GaugeValue, sm.backfillDepthMean)
+	ch <- prometheus.MustNewConstMetric(collectError, prometheus.GaugeValue, errValue, "scheduler")
 }

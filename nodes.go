@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"regexp"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -103,19 +104,20 @@ func NewNodesCollector(client *slurmrest.APIClient) *NodesCollector {
 	}
 }
 
-func (nc *NodesCollector) metrics() *nodeMetrics {
+func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	var nm nodeMetrics
 
 	req := nc.client.SlurmApi.SlurmctldGetNodes(context.Background())
 	nodeInfo, resp, err := nc.client.SlurmApi.SlurmctldGetNodesExecute(req)
 	if err != nil {
 		log.Errorf("Failed to fetch nodes from slurm rest api: %s", err)
-		return &nm
+		return &nm, err
 	} else if resp.StatusCode != 200 {
+		err = fmt.Errorf("HTTP response not OK while fetching nodes from slurm rest api")
 		log.WithFields(log.Fields{
 			"status_code": resp.StatusCode,
-		}).Error("HTTP response not OK while fetching nodes from slurm rest api")
-		return &nm
+		}).Error(err)
+		return &nm, err
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
@@ -178,7 +180,7 @@ func (nc *NodesCollector) metrics() *nodeMetrics {
 		nm.gpuIdle += float64(idle)
 	}
 
-	return &nm
+	return &nm, nil
 }
 
 func (nc *NodesCollector) Describe(ch chan<- *prometheus.Desc) {
@@ -201,7 +203,11 @@ func (nc *NodesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nc.gpuTotal
 }
 func (nc *NodesCollector) Collect(ch chan<- prometheus.Metric) {
-	nm := nc.metrics()
+	var errValue float64
+	nm, err := nc.metrics()
+	if err != nil {
+		errValue = 1
+	}
 	ch <- prometheus.MustNewConstMetric(nc.alloc, prometheus.GaugeValue, nm.alloc)
 	ch <- prometheus.MustNewConstMetric(nc.comp, prometheus.GaugeValue, nm.comp)
 	ch <- prometheus.MustNewConstMetric(nc.down, prometheus.GaugeValue, nm.down)
@@ -219,4 +225,5 @@ func (nc *NodesCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(nc.gpuAlloc, prometheus.GaugeValue, nm.gpuAlloc)
 	ch <- prometheus.MustNewConstMetric(nc.gpuIdle, prometheus.GaugeValue, nm.gpuIdle)
 	ch <- prometheus.MustNewConstMetric(nc.gpuTotal, prometheus.GaugeValue, nm.gpuTotal)
+	ch <- prometheus.MustNewConstMetric(collectError, prometheus.GaugeValue, errValue, "nodes")
 }
