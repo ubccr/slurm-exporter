@@ -152,6 +152,11 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 			"status_code": resp.StatusCode,
 		}).Error(err)
 		return &nm, err
+	} else if len(nodeInfo.GetErrors()) > 0 {
+		for _, err := range nodeInfo.GetErrors() {
+			log.Error(err.GetError())
+		}
+		return &nm, fmt.Errorf("HTTP response contained %d errors", len(nodeInfo.GetErrors()))
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
