@@ -23,12 +23,15 @@ import (
 	"strings"
 
 	"github.com/dustin/go-humanize"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
 	// Regexp to parse GPU Gres and GresUsed strings. Example looks like this:
 	//   gpu:tesla_v100-pcie-16gb:2(S:0-1)
 	gpuGresPattern = regexp.MustCompile(`^gpu\:([^\:]+)\:?(\d+)?`)
+	collectError   = prometheus.NewDesc("slurm_exporter_collect_error",
+		"Indicates if an error has occurred during collection", []string{"collector"}, nil)
 )
 
 type Tres struct {
