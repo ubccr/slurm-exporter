@@ -21,91 +21,124 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 	"github.com/ubccr/slurmrest"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
-	allocPattern = regexp.MustCompile(`(?i)^ALLOC`)
-	compPattern  = regexp.MustCompile(`(?i)^COMP`)
-	downPattern  = regexp.MustCompile(`(?i)^DOWN`)
-	drainPattern = regexp.MustCompile(`(?i)^DRAIN`)
-	failPattern  = regexp.MustCompile(`(?i)^FAIL`)
-	errPattern   = regexp.MustCompile(`(?i)^ERR`)
-	idlePattern  = regexp.MustCompile(`(?i)^IDLE`)
-	maintPattern = regexp.MustCompile(`(?i)^MAINT`)
-	mixPattern   = regexp.MustCompile(`(?i)^MIX`)
-	resvPattern  = regexp.MustCompile(`(?i)^RES`)
+	ignoreNodeFeatures = kingpin.Flag("collector.node.ignore-features",
+		"Regular expression of node features to ignore").Default("^$").String()
+	allocPattern   = regexp.MustCompile(`(?i)^ALLOC`)
+	compPattern    = regexp.MustCompile(`(?i)^COMP`)
+	downPattern    = regexp.MustCompile(`(?i)^DOWN`)
+	drainPattern   = regexp.MustCompile(`(?i)^DRAIN`)
+	failPattern    = regexp.MustCompile(`(?i)^FAIL`)
+	errPattern     = regexp.MustCompile(`(?i)^ERR`)
+	idlePattern    = regexp.MustCompile(`(?i)^IDLE`)
+	invalPattern   = regexp.MustCompile(`(?i)^INVAL`)
+	maintPattern   = regexp.MustCompile(`(?i)^MAINT`)
+	mixPattern     = regexp.MustCompile(`(?i)^MIX`)
+	plannedPattern = regexp.MustCompile(`(?i)^PLANNED`)
+	resvPattern    = regexp.MustCompile(`(?i)^RES`)
+	unknownPattern = regexp.MustCompile(`(?i)^UNKNOWN`)
 )
 
 type NodesCollector struct {
-	client   *slurmrest.APIClient
-	alloc    *prometheus.Desc
-	comp     *prometheus.Desc
-	down     *prometheus.Desc
-	drain    *prometheus.Desc
-	err      *prometheus.Desc
-	fail     *prometheus.Desc
-	idle     *prometheus.Desc
-	maint    *prometheus.Desc
-	mix      *prometheus.Desc
-	resv     *prometheus.Desc
-	cpuAlloc *prometheus.Desc
-	cpuIdle  *prometheus.Desc
-	cpuOther *prometheus.Desc
-	cpuTotal *prometheus.Desc
-	gpuAlloc *prometheus.Desc
-	gpuIdle  *prometheus.Desc
-	gpuTotal *prometheus.Desc
+	client       *slurmrest.APIClient
+	alloc        *prometheus.Desc
+	comp         *prometheus.Desc
+	down         *prometheus.Desc
+	drain        *prometheus.Desc
+	err          *prometheus.Desc
+	fail         *prometheus.Desc
+	idle         *prometheus.Desc
+	inval        *prometheus.Desc
+	maint        *prometheus.Desc
+	mix          *prometheus.Desc
+	planned      *prometheus.Desc
+	resv         *prometheus.Desc
+	total        *prometheus.Desc
+	unknown      *prometheus.Desc
+	nodeState    *prometheus.Desc
+	nodeDown     *prometheus.Desc
+	nodeFeatures *prometheus.Desc
+	cpuAlloc     *prometheus.Desc
+	cpuIdle      *prometheus.Desc
+	cpuOther     *prometheus.Desc
+	cpuTotal     *prometheus.Desc
+	gpuAlloc     *prometheus.Desc
+	gpuIdle      *prometheus.Desc
+	gpuTotal     *prometheus.Desc
 }
 
 type nodeMetrics struct {
-	alloc    float64
-	comp     float64
-	down     float64
-	drain    float64
-	err      float64
-	fail     float64
-	idle     float64
-	maint    float64
-	mix      float64
-	resv     float64
-	cpuAlloc float64
-	cpuIdle  float64
-	cpuOther float64
-	cpuTotal float64
-	gpuAlloc float64
-	gpuIdle  float64
-	gpuTotal float64
+	alloc          float64
+	comp           float64
+	down           float64
+	drain          float64
+	err            float64
+	fail           float64
+	idle           float64
+	inval          float64
+	maint          float64
+	mix            float64
+	planned        float64
+	resv           float64
+	total          float64
+	unknown        float64
+	nodeState      map[string]string
+	nodeDown       map[string]float64
+	nodeDownReason map[string]string
+	nodeFeatures   map[string]string
+	cpuAlloc       float64
+	cpuIdle        float64
+	cpuOther       float64
+	cpuTotal       float64
+	gpuAlloc       float64
+	gpuIdle        float64
+	gpuTotal       float64
 }
 
 func NewNodesCollector(client *slurmrest.APIClient) *NodesCollector {
 	return &NodesCollector{
-		client:   client,
-		alloc:    prometheus.NewDesc("slurm_nodes_alloc", "Allocated nodes", nil, nil),
-		comp:     prometheus.NewDesc("slurm_nodes_comp", "Completing nodes", nil, nil),
-		down:     prometheus.NewDesc("slurm_nodes_down", "Down nodes", nil, nil),
-		drain:    prometheus.NewDesc("slurm_nodes_drain", "Drain nodes", nil, nil),
-		err:      prometheus.NewDesc("slurm_nodes_err", "Error nodes", nil, nil),
-		fail:     prometheus.NewDesc("slurm_nodes_fail", "Fail nodes", nil, nil),
-		idle:     prometheus.NewDesc("slurm_nodes_idle", "Idle nodes", nil, nil),
-		maint:    prometheus.NewDesc("slurm_nodes_maint", "Maint nodes", nil, nil),
-		mix:      prometheus.NewDesc("slurm_nodes_mix", "Mix nodes", nil, nil),
-		resv:     prometheus.NewDesc("slurm_nodes_resv", "Reserved nodes", nil, nil),
-		cpuAlloc: prometheus.NewDesc("slurm_cpus_alloc", "Allocated CPUs", nil, nil),
-		cpuIdle:  prometheus.NewDesc("slurm_cpus_idle", "Idle CPUs", nil, nil),
-		cpuOther: prometheus.NewDesc("slurm_cpus_other", "Mix CPUs", nil, nil),
-		cpuTotal: prometheus.NewDesc("slurm_cpus_total", "Total CPUs", nil, nil),
-		gpuAlloc: prometheus.NewDesc("slurm_gpus_alloc", "Allocated GPUs", nil, nil),
-		gpuIdle:  prometheus.NewDesc("slurm_gpus_idle", "Idle GPUs", nil, nil),
-		gpuTotal: prometheus.NewDesc("slurm_gpus_total", "Total GPUs", nil, nil),
+		client:       client,
+		alloc:        prometheus.NewDesc("slurm_nodes_alloc", "Allocated nodes", nil, nil),
+		comp:         prometheus.NewDesc("slurm_nodes_comp", "Completing nodes", nil, nil),
+		down:         prometheus.NewDesc("slurm_nodes_down", "Down nodes", nil, nil),
+		drain:        prometheus.NewDesc("slurm_nodes_drain", "Drain nodes", nil, nil),
+		err:          prometheus.NewDesc("slurm_nodes_err", "Error nodes", nil, nil),
+		fail:         prometheus.NewDesc("slurm_nodes_fail", "Fail nodes", nil, nil),
+		idle:         prometheus.NewDesc("slurm_nodes_idle", "Idle nodes", nil, nil),
+		inval:        prometheus.NewDesc("slurm_nodes_invalid", "Invalid nodes", nil, nil),
+		maint:        prometheus.NewDesc("slurm_nodes_maint", "Maint nodes", nil, nil),
+		mix:          prometheus.NewDesc("slurm_nodes_mix", "Mix nodes", nil, nil),
+		planned:      prometheus.NewDesc("slurm_nodes_planned", "Planned nodes", nil, nil),
+		resv:         prometheus.NewDesc("slurm_nodes_resv", "Reserved nodes", nil, nil),
+		total:        prometheus.NewDesc("slurm_nodes_total", "Total nodes", nil, nil),
+		unknown:      prometheus.NewDesc("slurm_nodes_unknown", "Unknown nodes", nil, nil),
+		nodeState:    prometheus.NewDesc("slurm_node_state_info", "Node state", []string{"node", "state"}, nil),
+		nodeDown:     prometheus.NewDesc("slurm_node_down", "Indicates if a node is down, 1=down 0=not down", []string{"node", "reason"}, nil),
+		nodeFeatures: prometheus.NewDesc("slurm_node_features_info", "Node features", []string{"node", "features"}, nil),
+		cpuAlloc:     prometheus.NewDesc("slurm_cpus_alloc", "Allocated CPUs", nil, nil),
+		cpuIdle:      prometheus.NewDesc("slurm_cpus_idle", "Idle CPUs", nil, nil),
+		cpuOther:     prometheus.NewDesc("slurm_cpus_other", "Mix CPUs", nil, nil),
+		cpuTotal:     prometheus.NewDesc("slurm_cpus_total", "Total CPUs", nil, nil),
+		gpuAlloc:     prometheus.NewDesc("slurm_gpus_alloc", "Allocated GPUs", nil, nil),
+		gpuIdle:      prometheus.NewDesc("slurm_gpus_idle", "Idle GPUs", nil, nil),
+		gpuTotal:     prometheus.NewDesc("slurm_gpus_total", "Total GPUs", nil, nil),
 	}
 }
 
 func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	var nm nodeMetrics
+	ignoreFeatures := regexp.MustCompile(*ignoreNodeFeatures)
+	nodeDown := make(map[string]float64)
+	nodeDownReason := make(map[string]string)
+	nodeFeatures := make(map[string]string)
 
 	req := nc.client.SlurmApi.SlurmctldGetNodes(context.Background())
 	nodeInfo, resp, err := nc.client.SlurmApi.SlurmctldGetNodesExecute(req)
@@ -121,6 +154,7 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
+		nm.total++
 		// Node states
 		switch {
 		case allocPattern.MatchString(n.GetState()):
@@ -137,13 +171,38 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 			nm.err++
 		case idlePattern.MatchString(n.GetState()):
 			nm.idle++
+		case invalPattern.MatchString(n.GetState()):
+			nm.inval++
 		case maintPattern.MatchString(n.GetState()):
 			nm.maint++
 		case mixPattern.MatchString(n.GetState()):
 			nm.mix++
+		case plannedPattern.MatchString(n.GetState()):
+			nm.planned++
 		case resvPattern.MatchString(n.GetState()):
 			nm.resv++
+		case unknownPattern.MatchString(n.GetState()):
+			nm.unknown++
+		default:
+			nm.unknown++
 		}
+
+		if strings.HasSuffix(n.GetState(), "*") ||
+			downPattern.MatchString(n.GetState()) || drainPattern.MatchString(n.GetState()) ||
+			invalPattern.MatchString(n.GetState()) || failPattern.MatchString(n.GetState()) {
+			nodeDown[n.GetName()] = 1
+		} else {
+			nodeDown[n.GetName()] = 0
+		}
+		nodeDownReason[n.GetName()] = n.GetReason()
+
+		features := []string{}
+		for _, feature := range strings.Split(n.GetFeatures(), ",") {
+			if !ignoreFeatures.MatchString(feature) {
+				features = append(features, feature)
+			}
+		}
+		nodeFeatures[n.GetName()] = strings.Join(features, ",")
 
 		// CPUs
 		nm.cpuTotal += float64(n.GetCpus())
@@ -180,6 +239,9 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		nm.gpuIdle += float64(idle)
 	}
 
+	nm.nodeDown = nodeDown
+	nm.nodeDownReason = nodeDownReason
+	nm.nodeFeatures = nodeFeatures
 	return &nm, nil
 }
 
@@ -191,9 +253,16 @@ func (nc *NodesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nc.err
 	ch <- nc.fail
 	ch <- nc.idle
+	ch <- nc.inval
 	ch <- nc.maint
 	ch <- nc.mix
+	ch <- nc.planned
 	ch <- nc.resv
+	ch <- nc.total
+	ch <- nc.unknown
+	ch <- nc.nodeState
+	ch <- nc.nodeDown
+	ch <- nc.nodeFeatures
 	ch <- nc.cpuAlloc
 	ch <- nc.cpuIdle
 	ch <- nc.cpuOther
@@ -215,9 +284,26 @@ func (nc *NodesCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(nc.err, prometheus.GaugeValue, nm.err)
 	ch <- prometheus.MustNewConstMetric(nc.fail, prometheus.GaugeValue, nm.fail)
 	ch <- prometheus.MustNewConstMetric(nc.idle, prometheus.GaugeValue, nm.idle)
+	ch <- prometheus.MustNewConstMetric(nc.inval, prometheus.GaugeValue, nm.inval)
 	ch <- prometheus.MustNewConstMetric(nc.maint, prometheus.GaugeValue, nm.maint)
 	ch <- prometheus.MustNewConstMetric(nc.mix, prometheus.GaugeValue, nm.mix)
+	ch <- prometheus.MustNewConstMetric(nc.planned, prometheus.GaugeValue, nm.planned)
 	ch <- prometheus.MustNewConstMetric(nc.resv, prometheus.GaugeValue, nm.resv)
+	ch <- prometheus.MustNewConstMetric(nc.total, prometheus.GaugeValue, nm.total)
+	ch <- prometheus.MustNewConstMetric(nc.unknown, prometheus.GaugeValue, nm.unknown)
+	for node, state := range nm.nodeState {
+		ch <- prometheus.MustNewConstMetric(nc.nodeState, prometheus.GaugeValue, 1, node, state)
+	}
+	for node, down := range nm.nodeDown {
+		var reason string
+		if r, ok := nm.nodeDownReason[node]; ok {
+			reason = r
+		}
+		ch <- prometheus.MustNewConstMetric(nc.nodeDown, prometheus.GaugeValue, down, node, reason)
+	}
+	for node, features := range nm.nodeFeatures {
+		ch <- prometheus.MustNewConstMetric(nc.nodeFeatures, prometheus.GaugeValue, 1, node, features)
+	}
 	ch <- prometheus.MustNewConstMetric(nc.cpuAlloc, prometheus.GaugeValue, nm.cpuAlloc)
 	ch <- prometheus.MustNewConstMetric(nc.cpuIdle, prometheus.GaugeValue, nm.cpuIdle)
 	ch <- prometheus.MustNewConstMetric(nc.cpuOther, prometheus.GaugeValue, nm.cpuOther)
