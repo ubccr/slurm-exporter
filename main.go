@@ -56,6 +56,11 @@ var (
 	timeout      = kingpin.Flag("rest-timeout", "Timeout of REST HTTP queries").Default("60").Int()
 	tokenTimeout = kingpin.Flag("token-timeout", "Timeout of getting REST token").Default("5").Int()
 	debug        = kingpin.Flag("debug", "enable debug mode").Default("false").Bool()
+	token        Token
+)
+
+const (
+	tokenLifespan = 86400
 )
 
 func main() {
@@ -105,12 +110,18 @@ func main() {
 func metricsHandler(cfg *slurmrest.Configuration) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if *restURL != "" {
-			token, err := getToken()
-			if err != nil {
-				http.Error(w, fmt.Sprintf("Unable to get JWT: %s", err), http.StatusNotFound)
-				return
+			if (token.created + int64(tokenLifespan)) <= time.Now().Unix() {
+				log.Info("Getting new JWT")
+				err := getToken()
+				if err != nil {
+					log.Errorf("Unable to get JWT: %s", err)
+					http.Error(w, fmt.Sprintf("Unable to get JWT: %s", err), http.StatusNotFound)
+					return
+				}
 			}
-			cfg.DefaultHeader["X-SLURM-USER-TOKEN"] = token
+			token.RLock()
+			defer token.RUnlock()
+			cfg.DefaultHeader["X-SLURM-USER-TOKEN"] = token.token
 		}
 		client := slurmrest.NewAPIClient(cfg)
 
@@ -124,24 +135,26 @@ func metricsHandler(cfg *slurmrest.Configuration) http.HandlerFunc {
 	}
 }
 
-func getToken() (string, error) {
+func getToken() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*tokenTimeout)*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "scontrol", "token")
+	cmd := exec.CommandContext(ctx, "scontrol", "token", fmt.Sprintf("lifespan=%d", tokenLifespan))
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		return "", err
+		return err
 	}
 	re := regexp.MustCompile(`^SLURM_JWT=(.*)`)
 	match := re.FindStringSubmatch(strings.TrimSpace(stdout.String()))
-	var token string
 	if len(match) == 2 {
-		token = match[1]
+		token.Lock()
+		defer token.Unlock()
+		token.token = match[1]
+		token.created = time.Now().Unix()
 	} else {
-		return "", fmt.Errorf("Unable to match SLURM_JWT from output, output=%s", stdout.String())
+		return fmt.Errorf("Unable to match SLURM_JWT from output, output=%s", stdout.String())
 	}
-	return token, nil
+	return nil
 }
