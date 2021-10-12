@@ -23,8 +23,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
 	"github.com/ubccr/slurmrest"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
@@ -49,6 +50,7 @@ var (
 
 type NodesCollector struct {
 	client       *slurmrest.APIClient
+	logger       log.Logger
 	alloc        *prometheus.Desc
 	comp         *prometheus.Desc
 	down         *prometheus.Desc
@@ -103,9 +105,10 @@ type nodeMetrics struct {
 	gpuTotal       float64
 }
 
-func NewNodesCollector(client *slurmrest.APIClient) *NodesCollector {
+func NewNodesCollector(client *slurmrest.APIClient, logger log.Logger) *NodesCollector {
 	return &NodesCollector{
 		client:       client,
+		logger:       log.With(logger, "collector", "nodes"),
 		alloc:        prometheus.NewDesc("slurm_nodes_alloc", "Allocated nodes", nil, nil),
 		comp:         prometheus.NewDesc("slurm_nodes_comp", "Completing nodes", nil, nil),
 		down:         prometheus.NewDesc("slurm_nodes_down", "Down nodes", nil, nil),
@@ -144,17 +147,15 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	req := nc.client.SlurmApi.SlurmctldGetNodes(context.Background())
 	nodeInfo, resp, err := nc.client.SlurmApi.SlurmctldGetNodesExecute(req)
 	if err != nil {
-		log.Errorf("Failed to fetch nodes from slurm rest api: %s", err)
+		level.Error(nc.logger).Log("msg", "Failed to fetch nodes from slurm rest api", "err", err)
 		return &nm, err
 	} else if resp.StatusCode != 200 {
 		err = fmt.Errorf("HTTP response not OK while fetching nodes from slurm rest api")
-		log.WithFields(log.Fields{
-			"status_code": resp.StatusCode,
-		}).Error(err)
+		level.Error(nc.logger).Log("err", err, "status_code", resp.StatusCode)
 		return &nm, err
 	} else if len(nodeInfo.GetErrors()) > 0 {
 		for _, err := range nodeInfo.GetErrors() {
-			log.Error(err.GetError())
+			level.Error(nc.logger).Log("err", err.GetError())
 		}
 		return &nm, fmt.Errorf("HTTP response contained %d errors", len(nodeInfo.GetErrors()))
 	}

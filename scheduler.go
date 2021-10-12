@@ -21,13 +21,15 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
 	"github.com/ubccr/slurmrest"
 )
 
 type SchedulerCollector struct {
 	client            *slurmrest.APIClient
+	logger            log.Logger
 	threads           *prometheus.Desc
 	queueSize         *prometheus.Desc
 	lastCycle         *prometheus.Desc
@@ -49,9 +51,10 @@ type diagMetrics struct {
 	backfillDepthMean float64
 }
 
-func NewSchedulerCollector(client *slurmrest.APIClient) *SchedulerCollector {
+func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *SchedulerCollector {
 	return &SchedulerCollector{
 		client: client,
+		logger: log.With(logger, "collector", "scheduler"),
 		threads: prometheus.NewDesc(
 			"slurm_scheduler_threads",
 			"Information provided by the Slurm sdiag command, number of scheduler threads ",
@@ -101,17 +104,15 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	req := sc.client.SlurmApi.SlurmctldDiag(context.Background())
 	diag, resp, err := sc.client.SlurmApi.SlurmctldDiagExecute(req)
 	if err != nil {
-		log.Errorf("Failed to diag from slurm rest api: %s", err)
+		level.Error(sc.logger).Log("msg", "Failed to diag from slurm rest api", "err", err)
 		return &dm, err
 	} else if resp.StatusCode != 200 {
 		err = fmt.Errorf("HTTP response not OK while fetching diag from slurm rest api")
-		log.WithFields(log.Fields{
-			"status_code": resp.StatusCode,
-		}).Error(err)
+		level.Error(sc.logger).Log("err", err, "status_code", resp.StatusCode)
 		return &dm, err
 	} else if len(diag.GetErrors()) > 0 {
 		for _, err := range diag.GetErrors() {
-			log.Error(err.GetError())
+			level.Error(sc.logger).Log("err", err.GetError())
 		}
 		return &dm, fmt.Errorf("HTTP response contained %d errors", len(diag.GetErrors()))
 	}

@@ -24,15 +24,20 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"os/user"
 	"regexp"
 	"strings"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	log "github.com/sirupsen/logrus"
+	"github.com/prometheus/common/promlog"
+	"github.com/prometheus/common/promlog/flag"
+	"github.com/prometheus/common/version"
 	"github.com/ubccr/slurmrest"
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
@@ -55,7 +60,6 @@ var (
 
 	timeout      = kingpin.Flag("rest-timeout", "Timeout of REST HTTP queries").Default("60").Int()
 	tokenTimeout = kingpin.Flag("token-timeout", "Timeout of getting REST token").Default("5").Int()
-	debug        = kingpin.Flag("debug", "enable debug mode").Default("false").Bool()
 	token        Token
 )
 
@@ -64,27 +68,28 @@ const (
 )
 
 func main() {
+	promlogConfig := &promlog.Config{}
+	flag.AddFlags(kingpin.CommandLine, promlogConfig)
+	kingpin.Version(version.Print("slurm-exporter"))
 	kingpin.HelpFlag.Short('h')
 	kingpin.Parse()
 
-	if *debug {
-		log.SetLevel(log.DebugLevel)
-	} else {
-		log.SetLevel(log.InfoLevel)
-	}
+	logger := promlog.New(promlogConfig)
 
 	cfg := slurmrest.NewConfiguration()
 	cfg.HTTPClient = &http.Client{Timeout: time.Duration(*timeout) * time.Second}
 	if *restURL != "" {
 		url, err := url.Parse(*restURL)
 		if err != nil {
-			log.Fatal(err)
+			level.Error(logger).Log("err", err)
+			os.Exit(1)
 		}
 		cfg.Scheme = url.Scheme
 		cfg.Host = url.Host
 		user, err := user.Current()
 		if err != nil {
-			log.Fatal(err)
+			level.Error(logger).Log("err", err)
+			os.Exit(1)
 		}
 		headers := make(map[string]string)
 		headers["X-SLURM-USER-NAME"] = user.Username
@@ -102,19 +107,25 @@ func main() {
 		cfg.HTTPClient.Transport = tr
 	}
 
-	log.Infof("Starting Server: %s", *listenAddress)
-	http.Handle("/metrics", metricsHandler(cfg))
-	log.Fatal(http.ListenAndServe(*listenAddress, nil))
+	level.Info(logger).Log("msg", "Starting slurm-exporter", "version", version.Info())
+	level.Info(logger).Log("msg", "Build context", "build_context", version.BuildContext())
+	level.Info(logger).Log("msg", "Starting Server", "address", *listenAddress)
+	http.Handle("/metrics", metricsHandler(cfg, logger))
+	err := http.ListenAndServe(*listenAddress, nil)
+	if err != nil {
+		level.Error(logger).Log("err", err)
+		os.Exit(1)
+	}
 }
 
-func metricsHandler(cfg *slurmrest.Configuration) http.HandlerFunc {
+func metricsHandler(cfg *slurmrest.Configuration, logger log.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if *restURL != "" {
 			if (token.created + int64(tokenLifespan)) <= time.Now().Unix() {
-				log.Info("Getting new JWT")
+				level.Info(logger).Log("msg", "Getting new JWT")
 				err := getToken()
 				if err != nil {
-					log.Errorf("Unable to get JWT: %s", err)
+					level.Error(logger).Log("msg", "Unable to get JWT", "err", err)
 					http.Error(w, fmt.Sprintf("Unable to get JWT: %s", err), http.StatusNotFound)
 					return
 				}
@@ -126,9 +137,9 @@ func metricsHandler(cfg *slurmrest.Configuration) http.HandlerFunc {
 		client := slurmrest.NewAPIClient(cfg)
 
 		registry := prometheus.NewRegistry()
-		registry.MustRegister(NewNodesCollector(client))
-		registry.MustRegister(NewSchedulerCollector(client))
-		registry.MustRegister(NewJobsCollector(client))
+		registry.MustRegister(NewNodesCollector(client, logger))
+		registry.MustRegister(NewSchedulerCollector(client, logger))
+		registry.MustRegister(NewJobsCollector(client, logger))
 		gatherers := prometheus.Gatherers{registry, prometheus.DefaultGatherer}
 		h := promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
 		h.ServeHTTP(w, r)

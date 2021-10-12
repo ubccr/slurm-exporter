@@ -22,13 +22,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	log "github.com/sirupsen/logrus"
 	"github.com/ubccr/slurmrest"
 )
 
 type JobsCollector struct {
 	client         *slurmrest.APIClient
+	logger         log.Logger
 	pending        *prometheus.Desc
 	pendingDep     *prometheus.Desc
 	running        *prometheus.Desc
@@ -104,9 +106,10 @@ func (t *timeMetric) average() float64 {
 	return float64(t.total) / float64(t.count)
 }
 
-func NewJobsCollector(client *slurmrest.APIClient) *JobsCollector {
+func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsCollector {
 	return &JobsCollector{
 		client:         client,
+		logger:         log.With(logger, "collector", "jobs"),
 		pending:        prometheus.NewDesc("slurm_queue_pending", "Pending jobs in queue", nil, nil),
 		pendingDep:     prometheus.NewDesc("slurm_queue_pending_dependency", "Pending jobs because of dependency in queue", nil, nil),
 		running:        prometheus.NewDesc("slurm_queue_running", "Running jobs in the cluster", nil, nil),
@@ -145,17 +148,15 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	req := jc.client.SlurmApi.SlurmctldGetJobs(context.Background())
 	jobs, resp, err := jc.client.SlurmApi.SlurmctldGetJobsExecute(req)
 	if err != nil {
-		log.Errorf("Failed to fetch jobs from slurm rest api: %s", err)
+		level.Error(jc.logger).Log("msg", "Failed to fetch jobs from slurm rest api", "err", err)
 		return &jm, err
 	} else if resp.StatusCode != 200 {
 		err = fmt.Errorf("HTTP response not OK while fetching jobs from slurm rest api")
-		log.WithFields(log.Fields{
-			"status_code": resp.StatusCode,
-		}).Error(err)
+		level.Error(jc.logger).Log("err", err, "status_code", resp.StatusCode)
 		return &jm, err
 	} else if len(jobs.GetErrors()) > 0 {
 		for _, err := range jobs.GetErrors() {
-			log.Error(err.GetError())
+			level.Error(jc.logger).Log("err", err)
 		}
 		return &jm, fmt.Errorf("HTTP response contained %d errors", len(jobs.GetErrors()))
 	}
@@ -192,30 +193,21 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 			waitTime.total += j.GetStartTime() - j.GetSubmitTime()
 			if tres.GresGpu > 0 {
 				jm.gpuRunning++
-				log.WithFields(log.Fields{
-					"job_id":    j.GetJobId(),
-					"partition": j.GetPartition(),
-					"wait_time": j.GetStartTime() - j.GetSubmitTime(),
-				}).Info("GPU Job")
+				level.Info(jc.logger).Log("msg", "GPU Job",
+					"job_id", j.GetJobId(), "partition", j.GetPartition(), "wait_time", (j.GetStartTime() - j.GetSubmitTime()))
 				waitTimeGpu.count++
 				waitTimeGpu.total += j.GetStartTime() - j.GetSubmitTime()
 			}
 			if (tres.Memory/uint64(tres.Node)) >= 128000000000 &&
 				(tres.Memory/uint64(tres.Node)) < 256000000000 {
-				log.WithFields(log.Fields{
-					"job_id":    j.GetJobId(),
-					"partition": j.GetPartition(),
-					"wait_time": j.GetStartTime() - j.GetSubmitTime(),
-				}).Info("Large Mem 128G Job")
+				level.Info(jc.logger).Log("msg", "Large Mem 128G Job",
+					"job_id", j.GetJobId(), "partition", j.GetPartition(), "wait_time", (j.GetStartTime() - j.GetSubmitTime()))
 				waitTime128.count++
 				waitTime128.total += j.GetStartTime() - j.GetSubmitTime()
 			}
 			if (tres.Memory / uint64(tres.Node)) >= 256000000000 {
-				log.WithFields(log.Fields{
-					"job_id":    j.GetJobId(),
-					"partition": j.GetPartition(),
-					"wait_time": j.GetStartTime() - j.GetSubmitTime(),
-				}).Info("Large Mem 256G Job")
+				level.Info(jc.logger).Log("msg", "Large Mem 256G Job",
+					"job_id", j.GetJobId(), "partition", j.GetPartition(), "wait_time", (j.GetStartTime() - j.GetSubmitTime()))
 				waitTime256.count++
 				waitTime256.total += j.GetStartTime() - j.GetSubmitTime()
 			}
