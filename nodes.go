@@ -188,7 +188,7 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 			nm.unknown++
 		}
 
-		nodeState[n.GetName()] = strings.ToLower(strings.Trim(n.GetState(), "*"))
+		nodeState[n.GetName()] = strings.ToLower(n.GetState())
 
 		if strings.HasSuffix(n.GetState(), "*") ||
 			downPattern.MatchString(n.GetState()) || drainPattern.MatchString(n.GetState()) ||
