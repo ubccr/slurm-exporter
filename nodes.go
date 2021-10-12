@@ -30,7 +30,7 @@ import (
 )
 
 var (
-	ignoreNodeFeatures = kingpin.Flag("collector.node.ignore-features",
+	ignoreNodeFeatures = kingpin.Flag("collector.nodes.ignore-features",
 		"Regular expression of node features to ignore").Default("^$").String()
 	allocPattern   = regexp.MustCompile(`(?i)^ALLOC`)
 	compPattern    = regexp.MustCompile(`(?i)^COMP`)
