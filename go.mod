@@ -4,9 +4,10 @@ go 1.16
 
 require (
 	github.com/dustin/go-humanize v1.0.0
+	github.com/go-kit/kit v0.9.0
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/prometheus/client_golang v1.6.0
-	github.com/sirupsen/logrus v1.4.2
+	github.com/prometheus/common v0.9.1
 	github.com/stretchr/testify v1.4.0
 	github.com/ubccr/slurmrest v0.0.37-rev2
 	golang.org/x/net v0.0.0-20211011170408-caeb26a5c8c0 // indirect
