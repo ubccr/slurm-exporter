@@ -109,6 +109,11 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 			"status_code": resp.StatusCode,
 		}).Error(err)
 		return &dm, err
+	} else if len(diag.GetErrors()) > 0 {
+		for _, err := range diag.GetErrors() {
+			log.Error(err.GetError())
+		}
+		return &dm, fmt.Errorf("HTTP response contained %d errors", len(diag.GetErrors()))
 	}
 
 	dm.threads = float64(diag.Statistics.GetServerThreadCount())

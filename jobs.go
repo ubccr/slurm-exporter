@@ -153,6 +153,11 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 			"status_code": resp.StatusCode,
 		}).Error(err)
 		return &jm, err
+	} else if len(jobs.GetErrors()) > 0 {
+		for _, err := range jobs.GetErrors() {
+			log.Error(err.GetError())
+		}
+		return &jm, fmt.Errorf("HTTP response contained %d errors", len(jobs.GetErrors()))
 	}
 
 	waitTime := &timeMetric{}

@@ -21,6 +21,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/client_golang/prometheus"
@@ -40,6 +41,12 @@ type Tres struct {
 	Node    int
 	Billing int
 	GresGpu int
+}
+
+type Token struct {
+	sync.RWMutex
+	token   string
+	created int64
 }
 
 // gpuCountFromGres parses Slurm GRES (generic resource) line and returns the

@@ -136,6 +136,7 @@ func NewNodesCollector(client *slurmrest.APIClient) *NodesCollector {
 func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	var nm nodeMetrics
 	ignoreFeatures := regexp.MustCompile(*ignoreNodeFeatures)
+	nodeState := make(map[string]string)
 	nodeDown := make(map[string]float64)
 	nodeDownReason := make(map[string]string)
 	nodeFeatures := make(map[string]string)
@@ -151,6 +152,11 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 			"status_code": resp.StatusCode,
 		}).Error(err)
 		return &nm, err
+	} else if len(nodeInfo.GetErrors()) > 0 {
+		for _, err := range nodeInfo.GetErrors() {
+			log.Error(err.GetError())
+		}
+		return &nm, fmt.Errorf("HTTP response contained %d errors", len(nodeInfo.GetErrors()))
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
@@ -186,6 +192,8 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		default:
 			nm.unknown++
 		}
+
+		nodeState[n.GetName()] = strings.ToLower(n.GetState())
 
 		if strings.HasSuffix(n.GetState(), "*") ||
 			downPattern.MatchString(n.GetState()) || drainPattern.MatchString(n.GetState()) ||
@@ -239,6 +247,7 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		nm.gpuIdle += float64(idle)
 	}
 
+	nm.nodeState = nodeState
 	nm.nodeDown = nodeDown
 	nm.nodeDownReason = nodeDownReason
 	nm.nodeFeatures = nodeFeatures
