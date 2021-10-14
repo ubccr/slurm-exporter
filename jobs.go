@@ -28,6 +28,11 @@ import (
 	"github.com/ubccr/slurmrest"
 )
 
+const (
+	queueNamespace   = "queue"
+	gresGPUNamespace = "gres_gpu"
+)
+
 type JobsCollector struct {
 	client         *slurmrest.APIClient
 	logger         log.Logger
@@ -43,6 +48,7 @@ type JobsCollector struct {
 	timeout        *prometheus.Desc
 	preempted      *prometheus.Desc
 	nodeFail       *prometheus.Desc
+	total          *prometheus.Desc
 	waitTime       *prometheus.Desc
 	waitTimeGpu    *prometheus.Desc
 	waitTime128    *prometheus.Desc
@@ -60,6 +66,7 @@ type JobsCollector struct {
 	gpuTimeout     *prometheus.Desc
 	gpuPreempted   *prometheus.Desc
 	gpuNodeFail    *prometheus.Desc
+	gpuTotal       *prometheus.Desc
 }
 
 type jobMetrics struct {
@@ -75,6 +82,7 @@ type jobMetrics struct {
 	timeout        float64
 	preempted      float64
 	nodeFail       float64
+	total          float64
 	waitTime       float64
 	waitTimeGpu    float64
 	waitTime128    float64
@@ -92,6 +100,7 @@ type jobMetrics struct {
 	gpuTimeout     float64
 	gpuPreempted   float64
 	gpuNodeFail    float64
+	gpuTotal       float64
 }
 
 type timeMetric struct {
@@ -108,37 +117,70 @@ func (t *timeMetric) average() float64 {
 
 func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsCollector {
 	return &JobsCollector{
-		client:         client,
-		logger:         log.With(logger, "collector", "jobs"),
-		pending:        prometheus.NewDesc("slurm_queue_pending", "Pending jobs in queue", nil, nil),
-		pendingDep:     prometheus.NewDesc("slurm_queue_pending_dependency", "Pending jobs because of dependency in queue", nil, nil),
-		running:        prometheus.NewDesc("slurm_queue_running", "Running jobs in the cluster", nil, nil),
-		suspended:      prometheus.NewDesc("slurm_queue_suspended", "Suspended jobs in the cluster", nil, nil),
-		cancelled:      prometheus.NewDesc("slurm_queue_cancelled", "Cancelled jobs in the cluster", nil, nil),
-		completing:     prometheus.NewDesc("slurm_queue_completing", "Completing jobs in the cluster", nil, nil),
-		completed:      prometheus.NewDesc("slurm_queue_completed", "Completed jobs in the cluster", nil, nil),
-		configuring:    prometheus.NewDesc("slurm_queue_configuring", "Configuring jobs in the cluster", nil, nil),
-		failed:         prometheus.NewDesc("slurm_queue_failed", "Number of failed jobs", nil, nil),
-		timeout:        prometheus.NewDesc("slurm_queue_timeout", "Jobs stopped by timeout", nil, nil),
-		preempted:      prometheus.NewDesc("slurm_queue_preempted", "Number of preempted jobs", nil, nil),
-		nodeFail:       prometheus.NewDesc("slurm_queue_node_fail", "Number of jobs stopped due to node fail", nil, nil),
-		waitTime:       prometheus.NewDesc("slurm_queue_wait_time", "Average wait time of running jobs", nil, nil),
-		waitTimeGpu:    prometheus.NewDesc("slurm_queue_wait_time_gpu", "Average wait time of running jobs that requested GPU", nil, nil),
-		waitTime128:    prometheus.NewDesc("slurm_queue_wait_time_128", "Average wait time of running jobs that requested 128G RAM or greater", nil, nil),
-		waitTime256:    prometheus.NewDesc("slurm_queue_wait_time_256", "Average wait time of running jobs that requested 256G RAM or greater", nil, nil),
-		startTime:      prometheus.NewDesc("slurm_queue_start_time", "Average estimated start time of pending jobs", nil, nil),
-		gpuPending:     prometheus.NewDesc("slurm_gres_gpu_pending", "Pending gres/gpu jobs in queue", nil, nil),
-		gpuPendingDep:  prometheus.NewDesc("slurm_gres_gpu_pending_dependency", "Pending gres/gpu jobs because of dependency in queue", nil, nil),
-		gpuRunning:     prometheus.NewDesc("slurm_gres_gpu_running", "Running gres/gpu jobs in the cluster", nil, nil),
-		gpuSuspended:   prometheus.NewDesc("slurm_gres_gpu_suspended", "Suspended gres/gpu jobs in the cluster", nil, nil),
-		gpuCancelled:   prometheus.NewDesc("slurm_gres_gpu_cancelled", "Cancelled gres/gpu jobs in the cluster", nil, nil),
-		gpuCompleting:  prometheus.NewDesc("slurm_gres_gpu_completing", "Completing gres/gpu jobs in the cluster", nil, nil),
-		gpuCompleted:   prometheus.NewDesc("slurm_gres_gpu_completed", "Completed gres/gpu jobs in the cluster", nil, nil),
-		gpuConfiguring: prometheus.NewDesc("slurm_gres_gpu_configuring", "Configuring gres/gpu jobs in the cluster", nil, nil),
-		gpuFailed:      prometheus.NewDesc("slurm_gres_gpu_failed", "Number of failed gres/gpu jobs", nil, nil),
-		gpuTimeout:     prometheus.NewDesc("slurm_gres_gpu_timeout", "gres/gpu Jobs stopped by timeout", nil, nil),
-		gpuPreempted:   prometheus.NewDesc("slurm_gres_gpu_preempted", "Number of preempted gres/gpu jobs", nil, nil),
-		gpuNodeFail:    prometheus.NewDesc("slurm_gres_gpu_node_fail", "Number of gres/gpu jobs stopped due to node fail", nil, nil),
+		client: client,
+		logger: log.With(logger, "collector", "jobs"),
+		pending: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "pending"),
+			"Pending jobs in queue", nil, nil),
+		pendingDep: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "pending_dependency"),
+			"Pending jobs because of dependency in queue", nil, nil),
+		running: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "running"),
+			"Running jobs in the cluster", nil, nil),
+		suspended: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "suspended"),
+			"Suspended jobs in the cluster", nil, nil),
+		cancelled: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "cancelled"),
+			"Cancelled jobs in the cluster", nil, nil),
+		completing: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "completing"),
+			"Completing jobs in the cluster", nil, nil),
+		completed: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "completed"),
+			"Completed jobs in the cluster", nil, nil),
+		configuring: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "configuring"),
+			"Configuring jobs in the cluster", nil, nil),
+		failed: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "failed"),
+			"Number of failed jobs", nil, nil),
+		timeout: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "timeout"),
+			"Jobs stopped by timeout", nil, nil),
+		preempted: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "preempted"),
+			"Number of preempted jobs", nil, nil),
+		nodeFail: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "node_fail"),
+			"Number of jobs stopped due to node fail", nil, nil),
+		total: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "total"),
+			"Total jobs in the cluster", nil, nil),
+		waitTime: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time"),
+			"Average wait time of running jobs", nil, nil),
+		waitTimeGpu: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_gpu"),
+			"Average wait time of running jobs that requested GPU", nil, nil),
+		waitTime128: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_128"),
+			"Average wait time of running jobs that requested 128G RAM or greater", nil, nil),
+		waitTime256: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_256"),
+			"Average wait time of running jobs that requested 256G RAM or greater", nil, nil),
+		startTime: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "start_time"),
+			"Average estimated start time of pending jobs", nil, nil),
+		gpuPending: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "pending"),
+			"Pending gres/gpu jobs in queue", nil, nil),
+		gpuPendingDep: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "pending_dependency"),
+			"Pending gres/gpu jobs because of dependency in queue", nil, nil),
+		gpuRunning: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "running"),
+			"Running gres/gpu jobs in the cluster", nil, nil),
+		gpuSuspended: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "suspended"),
+			"Suspended gres/gpu jobs in the cluster", nil, nil),
+		gpuCancelled: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "cancelled"),
+			"Cancelled gres/gpu jobs in the cluster", nil, nil),
+		gpuCompleting: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "completing"),
+			"Completing gres/gpu jobs in the cluster", nil, nil),
+		gpuCompleted: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "completed"),
+			"Completed gres/gpu jobs in the cluster", nil, nil),
+		gpuConfiguring: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "configuring"),
+			"Configuring gres/gpu jobs in the cluster", nil, nil),
+		gpuFailed: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "failed"),
+			"Number of failed gres/gpu jobs", nil, nil),
+		gpuTimeout: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "timeout"),
+			"gres/gpu Jobs stopped by timeout", nil, nil),
+		gpuPreempted: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "preempted"),
+			"Number of preempted gres/gpu jobs", nil, nil),
+		gpuNodeFail: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "node_fail"),
+			"Number of gres/gpu jobs stopped due to node fail", nil, nil),
+		gpuTotal: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "total"),
+			"Total gres/gpu jobs in the cluster", nil, nil),
 	}
 }
 
@@ -171,6 +213,10 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	for _, j := range jobs.GetJobs() {
 		tres := parseTres(j.GetTresAllocStr())
 
+		jm.total++
+		if tres.GresGpu > 0 {
+			jm.gpuTotal++
+		}
 		switch j.GetJobState() {
 		case "PENDING":
 			jm.pending++
@@ -281,6 +327,7 @@ func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- jc.timeout
 	ch <- jc.preempted
 	ch <- jc.nodeFail
+	ch <- jc.total
 	ch <- jc.waitTime
 	ch <- jc.waitTimeGpu
 	ch <- jc.waitTime128
@@ -298,6 +345,7 @@ func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- jc.gpuTimeout
 	ch <- jc.gpuPreempted
 	ch <- jc.gpuNodeFail
+	ch <- jc.gpuTotal
 }
 
 func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
@@ -318,6 +366,7 @@ func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(jc.timeout, prometheus.GaugeValue, jm.timeout)
 	ch <- prometheus.MustNewConstMetric(jc.preempted, prometheus.GaugeValue, jm.preempted)
 	ch <- prometheus.MustNewConstMetric(jc.nodeFail, prometheus.GaugeValue, jm.nodeFail)
+	ch <- prometheus.MustNewConstMetric(jc.total, prometheus.GaugeValue, jm.total)
 	ch <- prometheus.MustNewConstMetric(jc.waitTime, prometheus.GaugeValue, jm.waitTime)
 	ch <- prometheus.MustNewConstMetric(jc.waitTimeGpu, prometheus.GaugeValue, jm.waitTimeGpu)
 	ch <- prometheus.MustNewConstMetric(jc.waitTime128, prometheus.GaugeValue, jm.waitTime128)
@@ -335,5 +384,6 @@ func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(jc.gpuTimeout, prometheus.GaugeValue, jm.gpuTimeout)
 	ch <- prometheus.MustNewConstMetric(jc.gpuPreempted, prometheus.GaugeValue, jm.gpuPreempted)
 	ch <- prometheus.MustNewConstMetric(jc.gpuNodeFail, prometheus.GaugeValue, jm.gpuNodeFail)
+	ch <- prometheus.MustNewConstMetric(jc.gpuTotal, prometheus.GaugeValue, jm.gpuTotal)
 	ch <- prometheus.MustNewConstMetric(collectError, prometheus.GaugeValue, errValue, "jobs")
 }
