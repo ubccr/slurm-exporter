@@ -179,6 +179,8 @@ github.com/stretchr/testify v1.4.0 h1:2E4SXV/wtOkTonXsotYi4li6zVWxYlZuYNCXe9XRJy
 github.com/stretchr/testify v1.4.0/go.mod h1:j7eGeouHqKxXV5pUuKE4zz7dFj8WfuZ+81PSLYec5m4=
 github.com/ubccr/slurmrest v0.1.1 h1:B3DeYcJhsI9VUg84Q39z1yB+Qq48Yh8T9Z6l3kIuKw4=
 github.com/ubccr/slurmrest v0.1.1/go.mod h1:K8zXVq4P74Reaynog5lSTTFzeifL7/goe1JsfvCbViU=
+github.com/ubccr/slurmrest v0.1.2 h1:PI6+oC7UwI/F2hWxmTKoxSQD6/XbG4CWlRw9lb5P+0c=
+github.com/ubccr/slurmrest v0.1.2/go.mod h1:K8zXVq4P74Reaynog5lSTTFzeifL7/goe1JsfvCbViU=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
