@@ -9,8 +9,8 @@ require (
 	github.com/prometheus/client_golang v1.6.0
 	github.com/prometheus/common v0.9.1
 	github.com/stretchr/testify v1.4.0
-	github.com/ubccr/slurmrest v0.0.37-rev2
-	golang.org/x/net v0.0.0-20211011170408-caeb26a5c8c0 // indirect
+	github.com/ubccr/slurmrest v0.1.1
+	golang.org/x/net v0.0.0-20211014172544-2b766c08f1c0 // indirect
 	golang.org/x/oauth2 v0.0.0-20211005180243-6b3c2da341f1 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
