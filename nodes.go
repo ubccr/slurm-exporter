@@ -30,6 +30,13 @@ import (
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
+const (
+	nodesNamespace = "nodes"
+	nodeNamespace  = "node"
+	cpusNamespace  = "cpus"
+	gpusNamespace  = "gpus"
+)
+
 var (
 	ignoreNodeFeatures = kingpin.Flag("collector.nodes.ignore-features",
 		"Regular expression of node features to ignore").Default("^$").String()
@@ -107,32 +114,56 @@ type nodeMetrics struct {
 
 func NewNodesCollector(client *slurmrest.APIClient, logger log.Logger) *NodesCollector {
 	return &NodesCollector{
-		client:       client,
-		logger:       log.With(logger, "collector", "nodes"),
-		alloc:        prometheus.NewDesc("slurm_nodes_alloc", "Allocated nodes", nil, nil),
-		comp:         prometheus.NewDesc("slurm_nodes_comp", "Completing nodes", nil, nil),
-		down:         prometheus.NewDesc("slurm_nodes_down", "Down nodes", nil, nil),
-		drain:        prometheus.NewDesc("slurm_nodes_drain", "Drain nodes", nil, nil),
-		err:          prometheus.NewDesc("slurm_nodes_err", "Error nodes", nil, nil),
-		fail:         prometheus.NewDesc("slurm_nodes_fail", "Fail nodes", nil, nil),
-		idle:         prometheus.NewDesc("slurm_nodes_idle", "Idle nodes", nil, nil),
-		inval:        prometheus.NewDesc("slurm_nodes_invalid", "Invalid nodes", nil, nil),
-		maint:        prometheus.NewDesc("slurm_nodes_maint", "Maint nodes", nil, nil),
-		mix:          prometheus.NewDesc("slurm_nodes_mix", "Mix nodes", nil, nil),
-		planned:      prometheus.NewDesc("slurm_nodes_planned", "Planned nodes", nil, nil),
-		resv:         prometheus.NewDesc("slurm_nodes_resv", "Reserved nodes", nil, nil),
-		total:        prometheus.NewDesc("slurm_nodes_total", "Total nodes", nil, nil),
-		unknown:      prometheus.NewDesc("slurm_nodes_unknown", "Unknown nodes", nil, nil),
-		nodeState:    prometheus.NewDesc("slurm_node_state_info", "Node state", []string{"node", "state"}, nil),
-		nodeDown:     prometheus.NewDesc("slurm_node_down", "Indicates if a node is down, 1=down 0=not down", []string{"node", "reason"}, nil),
-		nodeFeatures: prometheus.NewDesc("slurm_node_features_info", "Node features", []string{"node", "features"}, nil),
-		cpuAlloc:     prometheus.NewDesc("slurm_cpus_alloc", "Allocated CPUs", nil, nil),
-		cpuIdle:      prometheus.NewDesc("slurm_cpus_idle", "Idle CPUs", nil, nil),
-		cpuOther:     prometheus.NewDesc("slurm_cpus_other", "Mix CPUs", nil, nil),
-		cpuTotal:     prometheus.NewDesc("slurm_cpus_total", "Total CPUs", nil, nil),
-		gpuAlloc:     prometheus.NewDesc("slurm_gpus_alloc", "Allocated GPUs", nil, nil),
-		gpuIdle:      prometheus.NewDesc("slurm_gpus_idle", "Idle GPUs", nil, nil),
-		gpuTotal:     prometheus.NewDesc("slurm_gpus_total", "Total GPUs", nil, nil),
+		client: client,
+		logger: log.With(logger, "collector", "nodes"),
+		alloc: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "alloc"),
+			"Allocated nodes", nil, nil),
+		comp: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "comp"),
+			"Completing nodes", nil, nil),
+		down: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "down"),
+			"Down nodes", nil, nil),
+		drain: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "drain"),
+			"Drain nodes", nil, nil),
+		err: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "err"),
+			"Error nodes", nil, nil),
+		fail: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "fail"),
+			"Fail nodes", nil, nil),
+		idle: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "idle"),
+			"Idle nodes", nil, nil),
+		inval: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "invalid"),
+			"Invalid nodes", nil, nil),
+		maint: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "maint"),
+			"Maint nodes", nil, nil),
+		mix: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "mix"),
+			"Mix nodes", nil, nil),
+		planned: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "planned"),
+			"Planned nodes", nil, nil),
+		resv: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "resv"),
+			"Reserved nodes", nil, nil),
+		total: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "total"),
+			"Total nodes", nil, nil),
+		unknown: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "unknown"),
+			"Unknown nodes", nil, nil),
+		nodeState: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodeNamespace, "state_info"),
+			"Node state", []string{"node", "state"}, nil),
+		nodeDown: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodeNamespace, "down"),
+			"Indicates if a node is down, 1=down 0=not down", []string{"node", "reason"}, nil),
+		nodeFeatures: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodeNamespace, "features_info"),
+			"Node features", []string{"node", "features"}, nil),
+		cpuAlloc: prometheus.NewDesc(prometheus.BuildFQName(namespace, cpusNamespace, "alloc"),
+			"Allocated CPUs", nil, nil),
+		cpuIdle: prometheus.NewDesc(prometheus.BuildFQName(namespace, cpusNamespace, "idle"),
+			"Idle CPUs", nil, nil),
+		cpuOther: prometheus.NewDesc(prometheus.BuildFQName(namespace, cpusNamespace, "other"),
+			"Mix CPUs", nil, nil),
+		cpuTotal: prometheus.NewDesc(prometheus.BuildFQName(namespace, cpusNamespace, "total"),
+			"Total CPUs", nil, nil),
+		gpuAlloc: prometheus.NewDesc(prometheus.BuildFQName(namespace, gpusNamespace, "alloc"),
+			"Allocated GPUs", nil, nil),
+		gpuIdle: prometheus.NewDesc(prometheus.BuildFQName(namespace, gpusNamespace, "idle"),
+			"Idle GPUs", nil, nil),
+		gpuTotal: prometheus.NewDesc(prometheus.BuildFQName(namespace, gpusNamespace, "total"),
+			"Total GPUs", nil, nil),
 	}
 }
 

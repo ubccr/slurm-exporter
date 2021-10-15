@@ -49,6 +49,12 @@ type Token struct {
 	created int64
 }
 
+type rpcStat struct {
+	count     float64
+	aveTime   float64
+	totalTime float64
+}
+
 // gpuCountFromGres parses Slurm GRES (generic resource) line and returns the
 // count of GPUs
 func gpuCountFromGres(line string) int {

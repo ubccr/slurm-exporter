@@ -64,6 +64,7 @@ var (
 )
 
 const (
+	namespace     = "slurm"
 	tokenLifespan = 86400
 )
 
