@@ -29,6 +29,8 @@ import (
 
 const (
 	schedulerNamespace = "scheduler"
+	rpcNamespace       = "rpc"
+	userRpcNamespace   = "user_rpc"
 )
 
 type SchedulerCollector struct {
@@ -60,6 +62,12 @@ type SchedulerCollector struct {
 	totalBackfilledJobsSinceStart  *prometheus.Desc
 	totalBackfilledJobsSinceCycle  *prometheus.Desc
 	totalBackfilledHeterogeneous   *prometheus.Desc
+	rpcStatsCount                  *prometheus.Desc
+	rpcStatsAvgTime                *prometheus.Desc
+	rpcStatsTotalTime              *prometheus.Desc
+	userRpcStatsCount              *prometheus.Desc
+	userRpcStatsAvgTime            *prometheus.Desc
+	userRpcStatsTotalTime          *prometheus.Desc
 }
 
 type diagMetrics struct {
@@ -89,9 +97,13 @@ type diagMetrics struct {
 	totalBackfilledJobsSinceStart  float64
 	totalBackfilledJobsSinceCycle  float64
 	totalBackfilledHeterogeneous   float64
+	rpcStats                       map[string]rpcStat
+	userRpcStats                   map[string]rpcStat
 }
 
 func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *SchedulerCollector {
+	rpcStatsLabels := []string{"operation"}
+	userRpcStatsLabels := []string{"user"}
 	return &SchedulerCollector{
 		client: client,
 		logger: log.With(logger, "collector", "scheduler"),
@@ -225,11 +237,43 @@ func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *Sche
 			"Information provided by the Slurm sdiag command, number of heterogeneous job components started thanks to backfilling since last Slurm start",
 			nil,
 			nil),
+		rpcStatsCount: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, rpcNamespace, "stats_count"),
+			"Information provided by the Slurm sdiag command, rpc count statistic",
+			rpcStatsLabels,
+			nil),
+		rpcStatsAvgTime: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, rpcNamespace, "stats_time_avg"),
+			"Information provided by the Slurm sdiag command, rpc average time statistic in microseconds",
+			rpcStatsLabels,
+			nil),
+		rpcStatsTotalTime: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, rpcNamespace, "stats_time_total"),
+			"Information provided by the Slurm sdiag command, rpc total time statistic in microseconds",
+			rpcStatsLabels,
+			nil),
+		userRpcStatsCount: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_count"),
+			"Information provided by the Slurm sdiag command, rpc count statistic per user",
+			userRpcStatsLabels,
+			nil),
+		userRpcStatsAvgTime: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_time_avg"),
+			"Information provided by the Slurm sdiag command, rpc average time statistic per user in microseconds",
+			userRpcStatsLabels,
+			nil),
+		userRpcStatsTotalTime: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_time_total"),
+			"Information provided by the Slurm sdiag command, rpc total time statistic per user in microseconds",
+			userRpcStatsLabels,
+			nil),
 	}
 }
 
 func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	var dm diagMetrics
+	rpcStats := make(map[string]rpcStat)
+	userRpcStats := make(map[string]rpcStat)
 
 	req := sc.client.SlurmApi.SlurmctldDiag(context.Background())
 	diag, resp, err := sc.client.SlurmApi.SlurmctldDiagExecute(req)
@@ -274,6 +318,25 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	dm.totalBackfilledJobsSinceCycle = float64(diag.Statistics.GetBfLastBackfilledJobs())
 	dm.totalBackfilledHeterogeneous = float64(diag.Statistics.GetBfBackfilledHetJobs())
 
+	for _, rpc := range diag.Statistics.GetRpcsMessageType() {
+		stat := rpcStat{
+			count:     float64(rpc.GetCount()),
+			aveTime:   float64(rpc.GetAveTime()),
+			totalTime: float64(rpc.GetTotalTime()),
+		}
+		rpcStats[rpc.GetMessageType()] = stat
+	}
+	for _, userRpc := range diag.Statistics.GetRpcsUser() {
+		stat := rpcStat{
+			count:     float64(userRpc.GetCount()),
+			aveTime:   float64(userRpc.GetAveTime()),
+			totalTime: float64(userRpc.GetTotalTime()),
+		}
+		userRpcStats[userRpc.GetUser()] = stat
+	}
+	dm.rpcStats = rpcStats
+	dm.userRpcStats = userRpcStats
+
 	return &dm, nil
 }
 
@@ -303,6 +366,12 @@ func (sc *SchedulerCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- sc.totalBackfilledJobsSinceStart
 	ch <- sc.totalBackfilledJobsSinceCycle
 	ch <- sc.totalBackfilledHeterogeneous
+	ch <- sc.rpcStatsCount
+	ch <- sc.rpcStatsAvgTime
+	ch <- sc.rpcStatsTotalTime
+	ch <- sc.userRpcStatsCount
+	ch <- sc.userRpcStatsAvgTime
+	ch <- sc.userRpcStatsTotalTime
 }
 
 func (sc *SchedulerCollector) Collect(ch chan<- prometheus.Metric) {
@@ -337,5 +406,15 @@ func (sc *SchedulerCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(sc.totalBackfilledJobsSinceStart, prometheus.GaugeValue, sm.totalBackfilledJobsSinceStart)
 	ch <- prometheus.MustNewConstMetric(sc.totalBackfilledJobsSinceCycle, prometheus.GaugeValue, sm.totalBackfilledJobsSinceCycle)
 	ch <- prometheus.MustNewConstMetric(sc.totalBackfilledHeterogeneous, prometheus.GaugeValue, sm.totalBackfilledHeterogeneous)
+	for name, stat := range sm.rpcStats {
+		ch <- prometheus.MustNewConstMetric(sc.rpcStatsCount, prometheus.CounterValue, stat.count, name)
+		ch <- prometheus.MustNewConstMetric(sc.rpcStatsAvgTime, prometheus.GaugeValue, stat.aveTime, name)
+		ch <- prometheus.MustNewConstMetric(sc.rpcStatsTotalTime, prometheus.CounterValue, stat.totalTime, name)
+	}
+	for name, stat := range sm.userRpcStats {
+		ch <- prometheus.MustNewConstMetric(sc.userRpcStatsCount, prometheus.CounterValue, stat.count, name)
+		ch <- prometheus.MustNewConstMetric(sc.userRpcStatsAvgTime, prometheus.GaugeValue, stat.aveTime, name)
+		ch <- prometheus.MustNewConstMetric(sc.userRpcStatsTotalTime, prometheus.CounterValue, stat.totalTime, name)
+	}
 	ch <- prometheus.MustNewConstMetric(collectError, prometheus.GaugeValue, errValue, "scheduler")
 }
