@@ -211,7 +211,8 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	now := time.Now().Unix()
 
 	for _, j := range jobs.GetJobs() {
-		tres := parseTres(j.GetTresAllocStr())
+		tres := parseTres(j.GetTresReqStr())
+		tresAlloc := parseTres(j.GetTresAllocStr())
 
 		jm.total++
 		if tres.GresGpu > 0 {
@@ -243,13 +244,13 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 			}
 		case "RUNNING":
 			jm.running++
-			if tres.GresGpu > 0 {
+			if tresAlloc.GresGpu > 0 {
 				jm.gpuRunning++
 			}
 			waitTime := j.GetStartTime() - j.GetSubmitTime()
 			var memoryGB uint64
 			if tres.Node > 0 {
-				memoryGB = (tres.Memory / uint64(tres.Node)) / 1000000000
+				memoryGB = (tresAlloc.Memory / uint64(tresAlloc.Node)) / 1000000000
 			}
 			for i, waitTimeMemBucket := range *waitTimeMemBuckets {
 				if float64(memoryGB) >= waitTimeMemBucketsCmp[i] &&
