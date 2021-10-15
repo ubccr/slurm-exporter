@@ -64,6 +64,7 @@ var (
 )
 
 const (
+	namespace     = "slurm"
 	tokenLifespan = 86400
 )
 
@@ -140,6 +141,7 @@ func metricsHandler(cfg *slurmrest.Configuration, logger log.Logger) http.Handle
 		registry.MustRegister(NewNodesCollector(client, logger))
 		registry.MustRegister(NewSchedulerCollector(client, logger))
 		registry.MustRegister(NewJobsCollector(client, logger))
+		registry.MustRegister(NewLicensesCollector(client, logger))
 		gatherers := prometheus.Gatherers{registry, prometheus.DefaultGatherer}
 		h := promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
 		h.ServeHTTP(w, r)
