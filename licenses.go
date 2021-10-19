@@ -79,7 +79,7 @@ func (lc *LicensesCollector) metrics() ([]licenseMetrics, error) {
 		return lms, err
 	} else if len(licenses.GetErrors()) > 0 {
 		for _, err := range licenses.GetErrors() {
-			level.Error(lc.logger).Log("err", err)
+			level.Error(lc.logger).Log("err", err.GetError())
 		}
 		return lms, fmt.Errorf("HTTP response contained %d errors", len(licenses.GetErrors()))
 	}

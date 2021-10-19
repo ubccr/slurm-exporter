@@ -20,12 +20,23 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
+	"github.com/montanaflynn/stats"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ubccr/slurmrest"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
+)
+
+var (
+	waitTimeMemBuckets = FloatBuckets(kingpin.Flag(
+		"collector.jobs.wait-time-memory-buckets",
+		"Comma seperated list of wait time by memory bucketed by GB.",
+	).Default("128,256"))
 )
 
 const (
@@ -51,9 +62,9 @@ type JobsCollector struct {
 	total          *prometheus.Desc
 	waitTime       *prometheus.Desc
 	waitTimeGpu    *prometheus.Desc
-	waitTime128    *prometheus.Desc
-	waitTime256    *prometheus.Desc
+	waitTimeMem    *prometheus.Desc
 	startTime      *prometheus.Desc
+	startTimeGpu   *prometheus.Desc
 	gpuPending     *prometheus.Desc
 	gpuPendingDep  *prometheus.Desc
 	gpuRunning     *prometheus.Desc
@@ -85,9 +96,9 @@ type jobMetrics struct {
 	total          float64
 	waitTime       float64
 	waitTimeGpu    float64
-	waitTime128    float64
-	waitTime256    float64
+	waitTimeMem    map[string]float64
 	startTime      float64
+	startTimeGpu   float64
 	gpuPending     float64
 	gpuPendingDep  float64
 	gpuRunning     float64
@@ -101,18 +112,6 @@ type jobMetrics struct {
 	gpuPreempted   float64
 	gpuNodeFail    float64
 	gpuTotal       float64
-}
-
-type timeMetric struct {
-	total int64
-	count int
-}
-
-func (t *timeMetric) average() float64 {
-	if t.count == 0 {
-		return 0.0
-	}
-	return float64(t.total) / float64(t.count)
 }
 
 func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsCollector {
@@ -146,15 +145,15 @@ func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsColle
 		total: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "total"),
 			"Total jobs in the cluster", nil, nil),
 		waitTime: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time"),
-			"Average wait time of running jobs", nil, nil),
+			"Mean wait time of pending jobs", nil, nil),
 		waitTimeGpu: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_gpu"),
-			"Average wait time of running jobs that requested GPU", nil, nil),
-		waitTime128: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_128"),
-			"Average wait time of running jobs that requested 128G RAM or greater", nil, nil),
-		waitTime256: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_256"),
-			"Average wait time of running jobs that requested 256G RAM or greater", nil, nil),
+			"Mean wait time of pending jobs that requested GPU", nil, nil),
+		waitTimeMem: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_mem"),
+			"Mean wait time of running jobs by memory allocated per node", []string{"memory"}, nil),
 		startTime: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "start_time"),
-			"Average estimated start time of pending jobs", nil, nil),
+			"Mean estimated start time of pending jobs", nil, nil),
+		startTimeGpu: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "start_time_gpu"),
+			"Mean estimated start time of pending jobs that requested GPU", nil, nil),
 		gpuPending: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "pending"),
 			"Pending gres/gpu jobs in queue", nil, nil),
 		gpuPendingDep: prometheus.NewDesc(prometheus.BuildFQName(namespace, gresGPUNamespace, "pending_dependency"),
@@ -198,20 +197,22 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 		return &jm, err
 	} else if len(jobs.GetErrors()) > 0 {
 		for _, err := range jobs.GetErrors() {
-			level.Error(jc.logger).Log("err", err)
+			level.Error(jc.logger).Log("err", err.GetError())
 		}
 		return &jm, fmt.Errorf("HTTP response contained %d errors", len(jobs.GetErrors()))
 	}
 
-	waitTime := &timeMetric{}
-	waitTimeGpu := &timeMetric{}
-	waitTime128 := &timeMetric{}
-	waitTime256 := &timeMetric{}
-	startTime := &timeMetric{}
-	now := time.Now().Local().Unix()
+	var waitTimes, waitTimesGpu, startTimes, startTimesGpu []float64
+	waitTimesMem := make(map[int][]float64)
+	for _, w := range *waitTimeMemBuckets {
+		waitTimesMem[int(w)] = []float64{}
+	}
+	waitTimeMemBucketsCmp := append(*waitTimeMemBuckets, math.Inf(1))
+	now := time.Now().Unix()
 
 	for _, j := range jobs.GetJobs() {
-		tres := parseTres(j.GetTresAllocStr())
+		tres := parseTres(j.GetTresReqStr())
+		tresAlloc := parseTres(j.GetTresAllocStr())
 
 		jm.total++
 		if tres.GresGpu > 0 {
@@ -223,39 +224,40 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 			if j.GetStateReason() == "Dependency" {
 				jm.pendingDep++
 			}
-			if j.GetStartTime() >= now {
-				startTime.count++
-				startTime.total += j.GetStartTime() - now
-			}
 			if tres.GresGpu > 0 {
 				jm.gpuPending++
 				if j.GetStateReason() == "Dependency" {
 					jm.gpuPendingDep++
 				}
 			}
+			startTime := j.GetStartTime() - now
+			if startTime >= 0 {
+				startTimes = append(startTimes, float64(startTime))
+				if tres.GresGpu > 0 {
+					startTimesGpu = append(startTimesGpu, float64(startTime))
+				}
+			}
+			waitTime := now - j.GetSubmitTime()
+			waitTimes = append(waitTimes, float64(waitTime))
+			if tres.GresGpu > 0 {
+				waitTimesGpu = append(waitTimesGpu, float64(waitTime))
+			}
 		case "RUNNING":
 			jm.running++
-			waitTime.count++
-			waitTime.total += j.GetStartTime() - j.GetSubmitTime()
-			if tres.GresGpu > 0 {
+			if tresAlloc.GresGpu > 0 {
 				jm.gpuRunning++
-				level.Info(jc.logger).Log("msg", "GPU Job",
-					"job_id", j.GetJobId(), "partition", j.GetPartition(), "wait_time", (j.GetStartTime() - j.GetSubmitTime()))
-				waitTimeGpu.count++
-				waitTimeGpu.total += j.GetStartTime() - j.GetSubmitTime()
 			}
-			if (tres.Memory/uint64(tres.Node)) >= 128000000000 &&
-				(tres.Memory/uint64(tres.Node)) < 256000000000 {
-				level.Info(jc.logger).Log("msg", "Large Mem 128G Job",
-					"job_id", j.GetJobId(), "partition", j.GetPartition(), "wait_time", (j.GetStartTime() - j.GetSubmitTime()))
-				waitTime128.count++
-				waitTime128.total += j.GetStartTime() - j.GetSubmitTime()
+			waitTime := j.GetStartTime() - j.GetSubmitTime()
+			var memoryGB uint64
+			if tres.Node > 0 {
+				memoryGB = (tresAlloc.Memory / uint64(tresAlloc.Node)) / 1000000000
 			}
-			if (tres.Memory / uint64(tres.Node)) >= 256000000000 {
-				level.Info(jc.logger).Log("msg", "Large Mem 256G Job",
-					"job_id", j.GetJobId(), "partition", j.GetPartition(), "wait_time", (j.GetStartTime() - j.GetSubmitTime()))
-				waitTime256.count++
-				waitTime256.total += j.GetStartTime() - j.GetSubmitTime()
+			for i, waitTimeMemBucket := range *waitTimeMemBuckets {
+				if float64(memoryGB) >= waitTimeMemBucketsCmp[i] &&
+					float64(memoryGB) < waitTimeMemBucketsCmp[i+1] {
+					newWaitTimeMem := append(waitTimesMem[int(waitTimeMemBucket)], float64(waitTime))
+					waitTimesMem[int(waitTimeMemBucket)] = newWaitTimeMem
+				}
 			}
 		case "SUSPENDED":
 			jm.suspended++
@@ -305,11 +307,46 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 		}
 	}
 
-	jm.waitTime = waitTime.average()
-	jm.waitTimeGpu = waitTimeGpu.average()
-	jm.waitTime128 = waitTime128.average()
-	jm.waitTime256 = waitTime256.average()
-	jm.startTime = startTime.average()
+	if len(waitTimes) == 0 {
+		jm.waitTime = 0
+	} else if waitTime, err := stats.Mean(waitTimes); err != nil {
+		level.Error(jc.logger).Log("msg", "Unable to calculate mean wait time", "err", err)
+	} else {
+		jm.waitTime = waitTime
+	}
+	if len(waitTimesGpu) == 0 {
+		jm.waitTimeGpu = 0
+	} else if waitTimeGpu, err := stats.Mean(waitTimesGpu); err != nil {
+		level.Error(jc.logger).Log("msg", "Unable to calculate mean GPU wait time", "err", err)
+	} else {
+		jm.waitTimeGpu = waitTimeGpu
+	}
+	if len(startTimes) == 0 {
+		jm.startTime = 0
+	} else if startTime, err := stats.Mean(startTimes); err != nil {
+		level.Error(jc.logger).Log("msg", "Unable to calculate mean start time", "err", err)
+	} else {
+		jm.startTime = startTime
+	}
+	if len(startTimesGpu) == 0 {
+		jm.startTimeGpu = 0
+	} else if startTimeGpu, err := stats.Mean(startTimesGpu); err != nil {
+		level.Error(jc.logger).Log("msg", "Unable to calculate mean GPU start time", "err", err)
+	} else {
+		jm.startTimeGpu = startTimeGpu
+	}
+	waitTimeMem := make(map[string]float64)
+	for bucket, waitTimes := range waitTimesMem {
+		if len(waitTimes) == 0 {
+			waitTimeMem[strconv.Itoa(bucket)] = 0
+		} else if waitTime, err := stats.Mean(waitTimes); err != nil {
+			level.Error(jc.logger).Log("msg", "Unable to calculate mean memory wait time", "bucket", bucket, "err", err)
+			continue
+		} else {
+			waitTimeMem[strconv.Itoa(bucket)] = waitTime
+		}
+	}
+	jm.waitTimeMem = waitTimeMem
 
 	return &jm, err
 }
@@ -330,9 +367,9 @@ func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- jc.total
 	ch <- jc.waitTime
 	ch <- jc.waitTimeGpu
-	ch <- jc.waitTime128
-	ch <- jc.waitTime256
+	ch <- jc.waitTimeMem
 	ch <- jc.startTime
+	ch <- jc.startTimeGpu
 	ch <- jc.gpuPending
 	ch <- jc.gpuPendingDep
 	ch <- jc.gpuRunning
@@ -369,9 +406,11 @@ func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(jc.total, prometheus.GaugeValue, jm.total)
 	ch <- prometheus.MustNewConstMetric(jc.waitTime, prometheus.GaugeValue, jm.waitTime)
 	ch <- prometheus.MustNewConstMetric(jc.waitTimeGpu, prometheus.GaugeValue, jm.waitTimeGpu)
-	ch <- prometheus.MustNewConstMetric(jc.waitTime128, prometheus.GaugeValue, jm.waitTime128)
-	ch <- prometheus.MustNewConstMetric(jc.waitTime256, prometheus.GaugeValue, jm.waitTime256)
+	for bucket, waitTime := range jm.waitTimeMem {
+		ch <- prometheus.MustNewConstMetric(jc.waitTimeMem, prometheus.GaugeValue, waitTime, bucket)
+	}
 	ch <- prometheus.MustNewConstMetric(jc.startTime, prometheus.GaugeValue, jm.startTime)
+	ch <- prometheus.MustNewConstMetric(jc.startTimeGpu, prometheus.GaugeValue, jm.startTimeGpu)
 	ch <- prometheus.MustNewConstMetric(jc.gpuPending, prometheus.GaugeValue, jm.gpuPending)
 	ch <- prometheus.MustNewConstMetric(jc.gpuPendingDep, prometheus.GaugeValue, jm.gpuPendingDep)
 	ch <- prometheus.MustNewConstMetric(jc.gpuRunning, prometheus.GaugeValue, jm.gpuRunning)
