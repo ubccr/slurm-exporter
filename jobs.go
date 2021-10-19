@@ -20,8 +20,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -29,14 +27,6 @@ import (
 	"github.com/montanaflynn/stats"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ubccr/slurmrest"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
-)
-
-var (
-	waitTimeMemBuckets = FloatBuckets(kingpin.Flag(
-		"collector.jobs.wait-time-memory-buckets",
-		"Comma seperated list of wait time by memory bucketed by GB.",
-	).Default("128,256"))
 )
 
 const (
@@ -62,7 +52,6 @@ type JobsCollector struct {
 	total          *prometheus.Desc
 	waitTime       *prometheus.Desc
 	waitTimeGpu    *prometheus.Desc
-	waitTimeMem    *prometheus.Desc
 	startTime      *prometheus.Desc
 	startTimeGpu   *prometheus.Desc
 	gpuPending     *prometheus.Desc
@@ -96,7 +85,6 @@ type jobMetrics struct {
 	total          float64
 	waitTime       float64
 	waitTimeGpu    float64
-	waitTimeMem    map[string]float64
 	startTime      float64
 	startTimeGpu   float64
 	gpuPending     float64
@@ -148,8 +136,6 @@ func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsColle
 			"Mean wait time of pending jobs", nil, nil),
 		waitTimeGpu: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_gpu"),
 			"Mean wait time of pending jobs that requested GPU", nil, nil),
-		waitTimeMem: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "wait_time_mem"),
-			"Mean wait time of running jobs by memory allocated per node", []string{"memory"}, nil),
 		startTime: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "start_time"),
 			"Mean estimated start time of pending jobs", nil, nil),
 		startTimeGpu: prometheus.NewDesc(prometheus.BuildFQName(namespace, queueNamespace, "start_time_gpu"),
@@ -203,11 +189,6 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	}
 
 	var waitTimes, waitTimesGpu, startTimes, startTimesGpu []float64
-	waitTimesMem := make(map[int][]float64)
-	for _, w := range *waitTimeMemBuckets {
-		waitTimesMem[int(w)] = []float64{}
-	}
-	waitTimeMemBucketsCmp := append(*waitTimeMemBuckets, math.Inf(1))
 	now := time.Now().Unix()
 
 	for _, j := range jobs.GetJobs() {
@@ -246,18 +227,6 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 			jm.running++
 			if tresAlloc.GresGpu > 0 {
 				jm.gpuRunning++
-			}
-			waitTime := j.GetStartTime() - j.GetSubmitTime()
-			var memoryGB uint64
-			if tres.Node > 0 {
-				memoryGB = (tresAlloc.Memory / uint64(tresAlloc.Node)) / 1000000000
-			}
-			for i, waitTimeMemBucket := range *waitTimeMemBuckets {
-				if float64(memoryGB) >= waitTimeMemBucketsCmp[i] &&
-					float64(memoryGB) < waitTimeMemBucketsCmp[i+1] {
-					newWaitTimeMem := append(waitTimesMem[int(waitTimeMemBucket)], float64(waitTime))
-					waitTimesMem[int(waitTimeMemBucket)] = newWaitTimeMem
-				}
 			}
 		case "SUSPENDED":
 			jm.suspended++
@@ -335,18 +304,6 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	} else {
 		jm.startTimeGpu = startTimeGpu
 	}
-	waitTimeMem := make(map[string]float64)
-	for bucket, waitTimes := range waitTimesMem {
-		if len(waitTimes) == 0 {
-			waitTimeMem[strconv.Itoa(bucket)] = 0
-		} else if waitTime, err := stats.Mean(waitTimes); err != nil {
-			level.Error(jc.logger).Log("msg", "Unable to calculate mean memory wait time", "bucket", bucket, "err", err)
-			continue
-		} else {
-			waitTimeMem[strconv.Itoa(bucket)] = waitTime
-		}
-	}
-	jm.waitTimeMem = waitTimeMem
 
 	return &jm, err
 }
@@ -367,7 +324,6 @@ func (jc *JobsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- jc.total
 	ch <- jc.waitTime
 	ch <- jc.waitTimeGpu
-	ch <- jc.waitTimeMem
 	ch <- jc.startTime
 	ch <- jc.startTimeGpu
 	ch <- jc.gpuPending
@@ -406,9 +362,6 @@ func (jc *JobsCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(jc.total, prometheus.GaugeValue, jm.total)
 	ch <- prometheus.MustNewConstMetric(jc.waitTime, prometheus.GaugeValue, jm.waitTime)
 	ch <- prometheus.MustNewConstMetric(jc.waitTimeGpu, prometheus.GaugeValue, jm.waitTimeGpu)
-	for bucket, waitTime := range jm.waitTimeMem {
-		ch <- prometheus.MustNewConstMetric(jc.waitTimeMem, prometheus.GaugeValue, waitTime, bucket)
-	}
 	ch <- prometheus.MustNewConstMetric(jc.startTime, prometheus.GaugeValue, jm.startTime)
 	ch <- prometheus.MustNewConstMetric(jc.startTimeGpu, prometheus.GaugeValue, jm.startTimeGpu)
 	ch <- prometheus.MustNewConstMetric(jc.gpuPending, prometheus.GaugeValue, jm.gpuPending)
