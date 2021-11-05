@@ -56,10 +56,11 @@ type NodesCollector struct {
 	maint        *prometheus.Desc
 	mix          *prometheus.Desc
 	planned      *prometheus.Desc
+	reboot       *prometheus.Desc
 	resv         *prometheus.Desc
 	total        *prometheus.Desc
 	unknown      *prometheus.Desc
-	nodeState    *prometheus.Desc
+	nodeStates   *prometheus.Desc
 	nodeDown     *prometheus.Desc
 	nodeFeatures *prometheus.Desc
 	cpuAlloc     *prometheus.Desc
@@ -83,10 +84,11 @@ type nodeMetrics struct {
 	maint          float64
 	mix            float64
 	planned        float64
+	reboot         float64
 	resv           float64
 	total          float64
 	unknown        float64
-	nodeState      map[string]string
+	nodeStates     map[string][]string
 	nodeDown       map[string]float64
 	nodeDownReason map[string]string
 	nodeFeatures   map[string]string
@@ -125,13 +127,15 @@ func NewNodesCollector(client *slurmrest.APIClient, logger log.Logger) *NodesCol
 			"Mix nodes", nil, nil),
 		planned: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "planned"),
 			"Planned nodes", nil, nil),
+		reboot: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "reboot"),
+			"Reboot nodes", nil, nil),
 		resv: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "resv"),
 			"Reserved nodes", nil, nil),
 		total: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "total"),
 			"Total nodes", nil, nil),
 		unknown: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodesNamespace, "unknown"),
 			"Unknown nodes", nil, nil),
-		nodeState: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodeNamespace, "state_info"),
+		nodeStates: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodeNamespace, "state_info"),
 			"Node state", []string{"node", "state"}, nil),
 		nodeDown: prometheus.NewDesc(prometheus.BuildFQName(namespace, nodeNamespace, "down"),
 			"Indicates if a node is down, 1=down 0=not down", []string{"node", "reason"}, nil),
@@ -157,7 +161,7 @@ func NewNodesCollector(client *slurmrest.APIClient, logger log.Logger) *NodesCol
 func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	var nm nodeMetrics
 	ignoreFeatures := regexp.MustCompile(*ignoreNodeFeatures)
-	nodeState := make(map[string]string)
+	nodeStates := make(map[string][]string)
 	nodeDown := make(map[string]float64)
 	nodeDownReason := make(map[string]string)
 	nodeFeatures := make(map[string]string)
@@ -179,48 +183,56 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
+		states := []string{n.GetState()}
+		if len(n.GetStateFlags()) > 0 {
+			states = n.GetStateFlags()
+		}
 		nm.total++
-		// Node states
-		switch {
-		case allocPattern.MatchString(n.GetState()):
-			nm.alloc++
-		case compPattern.MatchString(n.GetState()):
-			nm.comp++
-		case downPattern.MatchString(n.GetState()):
-			nm.down++
-		case drainPattern.MatchString(n.GetState()):
-			nm.drain++
-		case failPattern.MatchString(n.GetState()):
-			nm.fail++
-		case errPattern.MatchString(n.GetState()):
-			nm.err++
-		case idlePattern.MatchString(n.GetState()):
-			nm.idle++
-		case invalPattern.MatchString(n.GetState()):
-			nm.inval++
-		case maintPattern.MatchString(n.GetState()):
-			nm.maint++
-		case mixPattern.MatchString(n.GetState()):
-			nm.mix++
-		case plannedPattern.MatchString(n.GetState()):
-			nm.planned++
-		case resvPattern.MatchString(n.GetState()):
-			nm.resv++
-		case unknownPattern.MatchString(n.GetState()):
-			nm.unknown++
-		default:
-			nm.unknown++
+		for _, state := range states {
+			// Node states
+			switch {
+			case allocPattern.MatchString(state):
+				nm.alloc++
+			case compPattern.MatchString(state):
+				nm.comp++
+			case downPattern.MatchString(state):
+				nm.down++
+			case drainPattern.MatchString(state):
+				nm.drain++
+			case failPattern.MatchString(state):
+				nm.fail++
+			case errPattern.MatchString(state):
+				nm.err++
+			case idlePattern.MatchString(state):
+				nm.idle++
+			case invalPattern.MatchString(state):
+				nm.inval++
+			case maintPattern.MatchString(state):
+				nm.maint++
+			case mixPattern.MatchString(state):
+				nm.mix++
+			case plannedPattern.MatchString(state):
+				nm.planned++
+			case rebootPattern.MatchString(state):
+				nm.reboot++
+			case resvPattern.MatchString(state):
+				nm.resv++
+			case unknownPattern.MatchString(state):
+				nm.unknown++
+			default:
+				nm.unknown++
+			}
+			nodeStates[n.GetName()] = append(nodeStates[n.GetName()], strings.ToLower(state))
 		}
 
-		nodeState[n.GetName()] = strings.ToLower(n.GetState())
-
-		if strings.HasSuffix(n.GetState(), "*") ||
-			downPattern.MatchString(n.GetState()) || drainPattern.MatchString(n.GetState()) ||
-			invalPattern.MatchString(n.GetState()) || failPattern.MatchString(n.GetState()) {
-			nodeDown[n.GetName()] = 1
-		} else {
-			nodeDown[n.GetName()] = 0
+		var down float64
+		for _, state := range states {
+			if downPattern.MatchString(state) || drainPattern.MatchString(state) ||
+				invalPattern.MatchString(state) || failPattern.MatchString(state) {
+				down = 1
+			}
 		}
+		nodeDown[n.GetName()] = down
 		nodeDownReason[n.GetName()] = n.GetReason()
 
 		features := []string{}
@@ -235,8 +247,7 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		nm.cpuTotal += float64(n.GetCpus())
 		nm.cpuAlloc += float64(n.GetAllocCpus())
 
-		if drainPattern.MatchString(n.GetState()) || downPattern.MatchString(n.GetState()) ||
-			failPattern.MatchString(n.GetState()) || errPattern.MatchString(n.GetState()) {
+		if down == 1 {
 			nm.cpuOther += float64(n.GetIdleCpus())
 		} else {
 			nm.cpuIdle += float64(n.GetIdleCpus())
@@ -249,24 +260,12 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		}
 
 		tresUsed := parseTres(n.GetTresUsed())
-
-		avail := tres.GresGpu
-		alloc := tresUsed.GresGpu
-		idle := avail - alloc
-		if n.GetIdleCpus() == 0 {
-			// No cores available so can't possibly get a GPU
-			idle = 0
-		} else if idle > int(n.GetIdleCpus()) {
-			// Less cores than idle GPUs so adjust accordingly
-			idle = idle - int(n.GetIdleCpus())
-		}
-
-		nm.gpuAlloc += float64(alloc)
-		nm.gpuTotal += float64(avail)
-		nm.gpuIdle += float64(idle)
+		nm.gpuAlloc += float64(tresUsed.GresGpu)
+		nm.gpuTotal += float64(tres.GresGpu)
+		nm.gpuIdle += float64(tres.GresGpu - tresUsed.GresGpu)
 	}
 
-	nm.nodeState = nodeState
+	nm.nodeStates = nodeStates
 	nm.nodeDown = nodeDown
 	nm.nodeDownReason = nodeDownReason
 	nm.nodeFeatures = nodeFeatures
@@ -285,10 +284,11 @@ func (nc *NodesCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- nc.maint
 	ch <- nc.mix
 	ch <- nc.planned
+	ch <- nc.reboot
 	ch <- nc.resv
 	ch <- nc.total
 	ch <- nc.unknown
-	ch <- nc.nodeState
+	ch <- nc.nodeStates
 	ch <- nc.nodeDown
 	ch <- nc.nodeFeatures
 	ch <- nc.cpuAlloc
@@ -316,11 +316,14 @@ func (nc *NodesCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(nc.maint, prometheus.GaugeValue, nm.maint)
 	ch <- prometheus.MustNewConstMetric(nc.mix, prometheus.GaugeValue, nm.mix)
 	ch <- prometheus.MustNewConstMetric(nc.planned, prometheus.GaugeValue, nm.planned)
+	ch <- prometheus.MustNewConstMetric(nc.reboot, prometheus.GaugeValue, nm.reboot)
 	ch <- prometheus.MustNewConstMetric(nc.resv, prometheus.GaugeValue, nm.resv)
 	ch <- prometheus.MustNewConstMetric(nc.total, prometheus.GaugeValue, nm.total)
 	ch <- prometheus.MustNewConstMetric(nc.unknown, prometheus.GaugeValue, nm.unknown)
-	for node, state := range nm.nodeState {
-		ch <- prometheus.MustNewConstMetric(nc.nodeState, prometheus.GaugeValue, 1, node, state)
+	for node, states := range nm.nodeStates {
+		for _, state := range states {
+			ch <- prometheus.MustNewConstMetric(nc.nodeStates, prometheus.GaugeValue, 1, node, state)
+		}
 	}
 	for node, down := range nm.nodeDown {
 		var reason string
