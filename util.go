@@ -25,14 +25,31 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/client_golang/prometheus"
+	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (
+	ignorePartitions = kingpin.Flag("collector.partition.ignore",
+		"Regexp of partitions to ignore").Default("^$").String()
 	// Regexp to parse GPU Gres and GresUsed strings. Example looks like this:
 	//   gpu:tesla_v100-pcie-16gb:2(S:0-1)
 	gpuGresPattern = regexp.MustCompile(`^gpu\:([^\:]+)\:?(\d+)?`)
 	collectError   = prometheus.NewDesc("slurm_exporter_collect_error",
 		"Indicates if an error has occurred during collection", []string{"collector"}, nil)
+	allocPattern   = regexp.MustCompile(`(?i)^ALLOC`)
+	compPattern    = regexp.MustCompile(`(?i)^COMP`)
+	downPattern    = regexp.MustCompile(`(?i)^DOWN`)
+	drainPattern   = regexp.MustCompile(`(?i)^DRAIN`)
+	failPattern    = regexp.MustCompile(`(?i)^FAIL`)
+	errPattern     = regexp.MustCompile(`(?i)^ERR`)
+	idlePattern    = regexp.MustCompile(`(?i)^IDLE`)
+	invalPattern   = regexp.MustCompile(`(?i)^INVAL`)
+	maintPattern   = regexp.MustCompile(`(?i)^MAINT`)
+	mixPattern     = regexp.MustCompile(`(?i)^MIX`)
+	plannedPattern = regexp.MustCompile(`(?i)^PLANNED`)
+	rebootPattern  = regexp.MustCompile(`(?i)^REBOOT`)
+	resvPattern    = regexp.MustCompile(`(?i)^RES`)
+	unknownPattern = regexp.MustCompile(`(?i)^UNKNOWN`)
 )
 
 type Tres struct {
@@ -103,4 +120,13 @@ func parseTres(line string) *Tres {
 	}
 
 	return &tres
+}
+
+func sliceContains(slice []string, str string) bool {
+	for _, s := range slice {
+		if str == s {
+			return true
+		}
+	}
+	return false
 }

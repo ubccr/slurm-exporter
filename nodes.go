@@ -40,19 +40,6 @@ const (
 var (
 	ignoreNodeFeatures = kingpin.Flag("collector.nodes.ignore-features",
 		"Regular expression of node features to ignore").Default("^$").String()
-	allocPattern   = regexp.MustCompile(`(?i)^ALLOC`)
-	compPattern    = regexp.MustCompile(`(?i)^COMP`)
-	downPattern    = regexp.MustCompile(`(?i)^DOWN`)
-	drainPattern   = regexp.MustCompile(`(?i)^DRAIN`)
-	failPattern    = regexp.MustCompile(`(?i)^FAIL`)
-	errPattern     = regexp.MustCompile(`(?i)^ERR`)
-	idlePattern    = regexp.MustCompile(`(?i)^IDLE`)
-	invalPattern   = regexp.MustCompile(`(?i)^INVAL`)
-	maintPattern   = regexp.MustCompile(`(?i)^MAINT`)
-	mixPattern     = regexp.MustCompile(`(?i)^MIX`)
-	plannedPattern = regexp.MustCompile(`(?i)^PLANNED`)
-	resvPattern    = regexp.MustCompile(`(?i)^RES`)
-	unknownPattern = regexp.MustCompile(`(?i)^UNKNOWN`)
 )
 
 type NodesCollector struct {
