@@ -139,8 +139,10 @@ func metricsHandler(cfg *slurmrest.Configuration, logger log.Logger) http.Handle
 
 		registry := prometheus.NewRegistry()
 		registry.MustRegister(NewNodesCollector(client, logger))
+		registry.MustRegister(NewPartitionNodesCollector(client, logger))
 		registry.MustRegister(NewSchedulerCollector(client, logger))
 		registry.MustRegister(NewJobsCollector(client, logger))
+		registry.MustRegister(NewPartitionJobsCollector(client, logger))
 		registry.MustRegister(NewLicensesCollector(client, logger))
 		gatherers := prometheus.Gatherers{registry, prometheus.DefaultGatherer}
 		h := promhttp.HandlerFor(gatherers, promhttp.HandlerOpts{})
