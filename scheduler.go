@@ -133,13 +133,13 @@ func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *Sche
 			nil,
 			nil),
 		maxCycle: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, schedulerNamespace, "max_cycle"),
-			"Information provided by the Slurm sdiag command, scheduler max cycle time in (microseconds)",
+			prometheus.BuildFQName(namespace, schedulerNamespace, "max_cycle_seconds"),
+			"Information provided by the Slurm sdiag command, scheduler max cycle time",
 			nil,
 			nil),
 		lastCycle: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, schedulerNamespace, "last_cycle"),
-			"Information provided by the Slurm sdiag command, scheduler last cycle time in (microseconds)",
+			prometheus.BuildFQName(namespace, schedulerNamespace, "last_cycle_seconds"),
+			"Information provided by the Slurm sdiag command, scheduler last cycle time",
 			nil,
 			nil),
 		totalCycle: prometheus.NewDesc(
@@ -148,8 +148,8 @@ func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *Sche
 			nil,
 			nil),
 		meanCycle: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, schedulerNamespace, "mean_cycle"),
-			"Information provided by the Slurm sdiag command, scheduler mean cycle time in (microseconds)",
+			prometheus.BuildFQName(namespace, schedulerNamespace, "mean_cycle_seconds"),
+			"Information provided by the Slurm sdiag command, scheduler mean cycle time",
 			nil,
 			nil),
 		cycleMeanDepth: prometheus.NewDesc(
@@ -168,18 +168,18 @@ func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *Sche
 			nil,
 			nil),
 		backfillLastCycle: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, schedulerNamespace, "backfill_last_cycle"),
-			"Information provided by the Slurm sdiag command, scheduler backfill last cycle time in (microseconds)",
+			prometheus.BuildFQName(namespace, schedulerNamespace, "backfill_last_cycle_seconds"),
+			"Information provided by the Slurm sdiag command, scheduler backfill last cycle time",
 			nil,
 			nil),
 		backfillMeanCycle: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, schedulerNamespace, "backfill_mean_cycle"),
-			"Information provided by the Slurm sdiag command, scheduler backfill mean cycle time in (microseconds)",
+			prometheus.BuildFQName(namespace, schedulerNamespace, "backfill_mean_cycle_seconds"),
+			"Information provided by the Slurm sdiag command, scheduler backfill mean cycle time",
 			nil,
 			nil),
 		backfillMaxCycle: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, schedulerNamespace, "backfill_max_cycle"),
-			"Information provided by the Slurm sdiag command, scheduler backfill max cycle time in (microseconds)",
+			prometheus.BuildFQName(namespace, schedulerNamespace, "backfill_max_cycle_seconds"),
+			"Information provided by the Slurm sdiag command, scheduler backfill max cycle time",
 			nil,
 			nil),
 		backfillDepthMean: prometheus.NewDesc(
@@ -243,13 +243,13 @@ func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *Sche
 			rpcStatsLabels,
 			nil),
 		rpcStatsAvgTime: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, rpcNamespace, "stats_time_avg"),
-			"Information provided by the Slurm sdiag command, rpc average time statistic in microseconds",
+			prometheus.BuildFQName(namespace, rpcNamespace, "stats_time_avg_seconds"),
+			"Information provided by the Slurm sdiag command, rpc average time statistic",
 			rpcStatsLabels,
 			nil),
 		rpcStatsTotalTime: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, rpcNamespace, "stats_time_total"),
-			"Information provided by the Slurm sdiag command, rpc total time statistic in microseconds",
+			prometheus.BuildFQName(namespace, rpcNamespace, "stats_time_total_seconds"),
+			"Information provided by the Slurm sdiag command, rpc total time statistic",
 			rpcStatsLabels,
 			nil),
 		userRpcStatsCount: prometheus.NewDesc(
@@ -258,13 +258,13 @@ func NewSchedulerCollector(client *slurmrest.APIClient, logger log.Logger) *Sche
 			userRpcStatsLabels,
 			nil),
 		userRpcStatsAvgTime: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_time_avg"),
-			"Information provided by the Slurm sdiag command, rpc average time statistic per user in microseconds",
+			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_time_avg_seconds"),
+			"Information provided by the Slurm sdiag command, rpc average time statistic per user",
 			userRpcStatsLabels,
 			nil),
 		userRpcStatsTotalTime: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_time_total"),
-			"Information provided by the Slurm sdiag command, rpc total time statistic per user in microseconds",
+			prometheus.BuildFQName(namespace, userRpcNamespace, "stats_time_total_seconds"),
+			"Information provided by the Slurm sdiag command, rpc total time statistic per user",
 			userRpcStatsLabels,
 			nil),
 	}
@@ -296,16 +296,16 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	dm.agentCount = float64(diag.Statistics.GetAgentCount())
 	dm.agentThreadCount = float64(diag.Statistics.GetAgentThreadCount())
 	dm.dbdQueueSize = float64(diag.Statistics.GetDbdAgentQueueSize())
-	dm.maxCycle = float64(diag.Statistics.GetScheduleCycleMax())
-	dm.lastCycle = float64(diag.Statistics.GetScheduleCycleLast())
+	dm.maxCycle = float64(diag.Statistics.GetScheduleCycleMax()) / 1000000
+	dm.lastCycle = float64(diag.Statistics.GetScheduleCycleLast()) / 1000000
 	dm.totalCycle = float64(diag.Statistics.GetScheduleCycleTotal())
-	dm.meanCycle = float64(diag.Statistics.GetScheduleCycleMean())
+	dm.meanCycle = float64(diag.Statistics.GetScheduleCycleMean()) / 1000000
 	dm.cycleMeanDepth = float64(diag.Statistics.GetScheduleCycleMeanDepth())
 	dm.cyclePerMinute = float64(diag.Statistics.GetScheduleCyclePerMinute())
 	dm.queueLength = float64(diag.Statistics.GetScheduleQueueLength())
-	dm.backfillLastCycle = float64(diag.Statistics.GetBfCycleLast())
-	dm.backfillMeanCycle = float64(diag.Statistics.GetBfCycleMean())
-	dm.backfillMaxCycle = float64(diag.Statistics.GetBfCycleMax())
+	dm.backfillLastCycle = float64(diag.Statistics.GetBfCycleLast()) / 1000000
+	dm.backfillMeanCycle = float64(diag.Statistics.GetBfCycleMean()) / 1000000
+	dm.backfillMaxCycle = float64(diag.Statistics.GetBfCycleMax()) / 1000000
 	dm.backfillDepthMean = float64(diag.Statistics.GetBfDepthMean())
 	dm.backfillDepthMeanTrySched = float64(diag.Statistics.GetBfDepthMeanTry())
 	dm.backfillLastDepthCycle = float64(diag.Statistics.GetBfLastDepth())
@@ -321,16 +321,16 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	for _, rpc := range diag.Statistics.GetRpcsMessageType() {
 		stat := rpcStat{
 			count:     float64(rpc.GetCount()),
-			aveTime:   float64(rpc.GetAveTime()),
-			totalTime: float64(rpc.GetTotalTime()),
+			aveTime:   float64(rpc.GetAveTime()) / 1000000,
+			totalTime: float64(rpc.GetTotalTime()) / 1000000,
 		}
 		rpcStats[rpc.GetMessageType()] = stat
 	}
 	for _, userRpc := range diag.Statistics.GetRpcsUser() {
 		stat := rpcStat{
 			count:     float64(userRpc.GetCount()),
-			aveTime:   float64(userRpc.GetAveTime()),
-			totalTime: float64(userRpc.GetTotalTime()),
+			aveTime:   float64(userRpc.GetAveTime()) / 1000000,
+			totalTime: float64(userRpc.GetTotalTime()) / 1000000,
 		}
 		userRpcStats[userRpc.GetUser()] = stat
 	}
