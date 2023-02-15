@@ -6,9 +6,9 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-kit/kit v0.9.0
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/montanaflynn/stats v0.6.6 // indirect
-	github.com/prometheus/client_golang v1.6.0
-	github.com/prometheus/common v0.9.1
+	github.com/montanaflynn/stats v0.6.6
+	github.com/prometheus/client_golang v1.11.1
+	github.com/prometheus/common v0.26.0
 	github.com/stretchr/testify v1.4.0
 	github.com/ubccr/slurmrest v0.1.3
 	golang.org/x/net v0.0.0-20211014222326-fd004c51d1d6 // indirect
