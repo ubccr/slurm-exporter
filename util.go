@@ -23,9 +23,9 @@ import (
 	"strings"
 	"sync"
 
+	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/client_golang/prometheus"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 var (

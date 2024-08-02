@@ -20,6 +20,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-kit/kit/log"
@@ -188,8 +189,8 @@ func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsColle
 func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	var jm jobMetrics
 
-	req := jc.client.SlurmApi.SlurmctldGetJobs(context.Background())
-	jobs, resp, err := jc.client.SlurmApi.SlurmctldGetJobsExecute(req)
+	req := jc.client.SlurmAPI.SlurmV0040GetJobs(context.Background())
+	jobs, resp, err := jc.client.SlurmAPI.SlurmV0040GetJobsExecute(req)
 	if err != nil {
 		level.Error(jc.logger).Log("msg", "Failed to fetch jobs from slurm rest api", "err", err)
 		return &jm, err
@@ -215,8 +216,10 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 		if tres.GresGpu > 0 {
 			jm.gpuTotal++
 		}
-		switch j.GetJobState() {
-		case "PENDING":
+
+		jobstate := strings.Join(j.GetJobState(), ",")
+		switch {
+		case strings.Contains(jobstate, "PENDING"):
 			jm.pending++
 			if j.GetStateReason() == "Dependency" {
 				jm.pendingDep++
@@ -227,64 +230,70 @@ func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 					jm.gpuPendingDep++
 				}
 			}
-			startTime := j.GetStartTime() - now
+			startTime := int64(0)
+			if jst, ok := j.GetStartTimeOk(); ok {
+				startTime = jst.GetNumber() - now
+			}
 			if startTime >= 0 {
 				startTimes = append(startTimes, float64(startTime))
 				if tres.GresGpu > 0 {
 					gpuStartTimes = append(gpuStartTimes, float64(startTime))
 				}
 			}
-			waitTime := now - j.GetSubmitTime()
+			waitTime := int64(0)
+			if jst, ok := j.GetSubmitTimeOk(); ok {
+				waitTime = now - jst.GetNumber()
+			}
 			waitTimes = append(waitTimes, float64(waitTime))
 			if tres.GresGpu > 0 {
 				gpuWaitTimes = append(gpuWaitTimes, float64(waitTime))
 			}
-		case "RUNNING":
+		case strings.Contains(jobstate, "RUNNING"):
 			jm.running++
 			if tresAlloc.GresGpu > 0 {
 				jm.gpuRunning++
 			}
-		case "SUSPENDED":
+		case strings.Contains(jobstate, "SUSPENDED"):
 			jm.suspended++
 			if tres.GresGpu > 0 {
 				jm.gpuSuspended++
 			}
-		case "CANCELLED":
+		case strings.Contains(jobstate, "CANCELLED"):
 			jm.cancelled++
 			if tres.GresGpu > 0 {
 				jm.gpuCancelled++
 			}
-		case "COMPLETING":
+		case strings.Contains(jobstate, "COMPLETING"):
 			jm.completing++
 			if tres.GresGpu > 0 {
 				jm.gpuCompleting++
 			}
-		case "COMPLETED":
+		case strings.Contains(jobstate, "COMPLETED"):
 			jm.completed++
 			if tres.GresGpu > 0 {
 				jm.gpuCompleted++
 			}
-		case "CONFIGURING":
+		case strings.Contains(jobstate, "CONFIGURING"):
 			jm.configuring++
 			if tres.GresGpu > 0 {
 				jm.gpuConfiguring++
 			}
-		case "FAILED":
+		case strings.Contains(jobstate, "FAILED"):
 			jm.failed++
 			if tres.GresGpu > 0 {
 				jm.gpuFailed++
 			}
-		case "TIMEOUT":
+		case strings.Contains(jobstate, "TIMEOUT"):
 			jm.timeout++
 			if tres.GresGpu > 0 {
 				jm.gpuTimeout++
 			}
-		case "PREEMPTED":
+		case strings.Contains(jobstate, "PREEMPTED"):
 			jm.preempted++
 			if tres.GresGpu > 0 {
 				jm.gpuPreempted++
 			}
-		case "NODE_FAIL":
+		case strings.Contains(jobstate, "NODE_FAIL"):
 			jm.nodeFail++
 			if tres.GresGpu > 0 {
 				jm.gpuFailed++

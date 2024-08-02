@@ -275,8 +275,8 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	rpcStats := make(map[string]rpcStat)
 	userRpcStats := make(map[string]rpcStat)
 
-	req := sc.client.SlurmApi.SlurmctldDiag(context.Background())
-	diag, resp, err := sc.client.SlurmApi.SlurmctldDiagExecute(req)
+	req := sc.client.SlurmAPI.SlurmV0040GetDiag(context.Background())
+	diag, resp, err := sc.client.SlurmAPI.SlurmV0040GetDiagExecute(req)
 	if err != nil {
 		level.Error(sc.logger).Log("msg", "Failed to diag from slurm rest api", "err", err)
 		return &dm, err
@@ -305,7 +305,6 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	dm.queueLength = float64(diag.Statistics.GetScheduleQueueLength())
 	dm.backfillLastCycle = float64(diag.Statistics.GetBfCycleLast()) / 1000000
 	dm.backfillMeanCycle = float64(diag.Statistics.GetBfCycleMean()) / 1000000
-	dm.backfillMaxCycle = float64(diag.Statistics.GetBfCycleMax()) / 1000000
 	dm.backfillDepthMean = float64(diag.Statistics.GetBfDepthMean())
 	dm.backfillDepthMeanTrySched = float64(diag.Statistics.GetBfDepthMeanTry())
 	dm.backfillLastDepthCycle = float64(diag.Statistics.GetBfLastDepth())
@@ -318,18 +317,18 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	dm.totalBackfilledJobsSinceCycle = float64(diag.Statistics.GetBfLastBackfilledJobs())
 	dm.totalBackfilledHeterogeneous = float64(diag.Statistics.GetBfBackfilledHetJobs())
 
-	for _, rpc := range diag.Statistics.GetRpcsMessageType() {
+	for _, rpc := range diag.Statistics.GetRpcsByMessageType() {
 		stat := rpcStat{
 			count:     float64(rpc.GetCount()),
-			aveTime:   float64(rpc.GetAveTime()) / 1000000,
+			aveTime:   float64(rpc.GetAverageTime()) / 1000000,
 			totalTime: float64(rpc.GetTotalTime()) / 1000000,
 		}
 		rpcStats[rpc.GetMessageType()] = stat
 	}
-	for _, userRpc := range diag.Statistics.GetRpcsUser() {
+	for _, userRpc := range diag.Statistics.GetRpcsByUser() {
 		stat := rpcStat{
 			count:     float64(userRpc.GetCount()),
-			aveTime:   float64(userRpc.GetAveTime()) / 1000000,
+			aveTime:   float64(userRpc.GetAverageTime()) / 1000000,
 			totalTime: float64(userRpc.GetTotalTime()) / 1000000,
 		}
 		userRpcStats[userRpc.GetUser()] = stat

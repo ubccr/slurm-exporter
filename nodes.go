@@ -23,11 +23,11 @@ import (
 	"regexp"
 	"strings"
 
+	kingpin "github.com/alecthomas/kingpin/v2"
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/ubccr/slurmrest"
-	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
 
 const (
@@ -166,8 +166,8 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	nodeDownReason := make(map[string]string)
 	nodeFeatures := make(map[string]string)
 
-	req := nc.client.SlurmApi.SlurmctldGetNodes(context.Background())
-	nodeInfo, resp, err := nc.client.SlurmApi.SlurmctldGetNodesExecute(req)
+	req := nc.client.SlurmAPI.SlurmV0040GetNodes(context.Background())
+	nodeInfo, resp, err := nc.client.SlurmAPI.SlurmV0040GetNodesExecute(req)
 	if err != nil {
 		level.Error(nc.logger).Log("msg", "Failed to fetch nodes from slurm rest api", "err", err)
 		return &nm, err
@@ -183,10 +183,7 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
-		states := []string{n.GetState()}
-		if len(n.GetStateFlags()) > 0 {
-			states = n.GetStateFlags()
-		}
+		states := n.GetState()
 		nm.total++
 		for _, state := range states {
 			// Node states
@@ -236,7 +233,7 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		nodeDownReason[n.GetName()] = n.GetReason()
 
 		features := []string{}
-		for _, feature := range strings.Split(n.GetFeatures(), ",") {
+		for _, feature := range n.GetFeatures() {
 			if !ignoreFeatures.MatchString(feature) {
 				features = append(features, feature)
 			}
@@ -248,9 +245,9 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 		nm.cpuAlloc += float64(n.GetAllocCpus())
 
 		if down == 1 {
-			nm.cpuOther += float64(n.GetIdleCpus())
+			nm.cpuOther += float64(n.GetAllocIdleCpus())
 		} else {
-			nm.cpuIdle += float64(n.GetIdleCpus())
+			nm.cpuIdle += float64(n.GetAllocIdleCpus())
 		}
 
 		// GPUs

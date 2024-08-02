@@ -142,7 +142,7 @@ func (pnc *PartitionNodesCollector) metrics() (*partitionNodeMetrics, error) {
 	var pnm partitionNodeMetrics
 	ignoredPattern := regexp.MustCompile(*ignorePartitions)
 
-	partitions, resp, err := pnc.client.SlurmApi.SlurmctldGetPartitions(context.Background()).Execute()
+	partitions, resp, err := pnc.client.SlurmAPI.SlurmV0040GetPartitions(context.Background()).Execute()
 	if err != nil {
 		level.Error(pnc.logger).Log("msg", "Failed to fetch partitions from slurm rest api", "err", err)
 		return &pnm, err
@@ -156,7 +156,7 @@ func (pnc *PartitionNodesCollector) metrics() (*partitionNodeMetrics, error) {
 		}
 		return &pnm, fmt.Errorf("HTTP response contained %d errors", len(partitions.GetErrors()))
 	}
-	nodeInfo, resp, err := pnc.client.SlurmApi.SlurmctldGetNodes(context.Background()).Execute()
+	nodeInfo, resp, err := pnc.client.SlurmAPI.SlurmV0040GetNodes(context.Background()).Execute()
 	if err != nil {
 		level.Error(pnc.logger).Log("msg", "Failed to fetch nodes from slurm rest api", "err", err)
 		return &pnm, err
@@ -223,10 +223,7 @@ func (pnc *PartitionNodesCollector) metrics() (*partitionNodeMetrics, error) {
 	}
 
 	for _, n := range nodeInfo.GetNodes() {
-		states := []string{n.GetState()}
-		if len(n.GetStateFlags()) > 0 {
-			states = n.GetStateFlags()
-		}
+		states := n.GetState()
 		for _, p := range n.GetPartitions() {
 			total[p]++
 			for _, state := range states {
@@ -278,9 +275,9 @@ func (pnc *PartitionNodesCollector) metrics() (*partitionNodeMetrics, error) {
 			cpuAlloc[p] += float64(n.GetAllocCpus())
 
 			if down == 1 {
-				cpuOther[p] += float64(n.GetIdleCpus())
+				cpuOther[p] += float64(n.GetAllocIdleCpus())
 			} else {
-				cpuIdle[p] += float64(n.GetIdleCpus())
+				cpuIdle[p] += float64(n.GetAllocIdleCpus())
 			}
 
 			// GPUs

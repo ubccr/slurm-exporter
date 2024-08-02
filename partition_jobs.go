@@ -193,7 +193,7 @@ func (pjc *PartitionJobsCollector) metrics() (*partitionJobMetrics, error) {
 	var pjm partitionJobMetrics
 	ignoredPattern := regexp.MustCompile(*ignorePartitions)
 
-	partitions, resp, err := pjc.client.SlurmApi.SlurmctldGetPartitions(context.Background()).Execute()
+	partitions, resp, err := pjc.client.SlurmAPI.SlurmV0040GetPartitions(context.Background()).Execute()
 	if err != nil {
 		level.Error(pjc.logger).Log("msg", "Failed to fetch partitions from slurm rest api", "err", err)
 		return &pjm, err
@@ -207,7 +207,7 @@ func (pjc *PartitionJobsCollector) metrics() (*partitionJobMetrics, error) {
 		}
 		return &pjm, fmt.Errorf("HTTP response contained %d errors", len(partitions.GetErrors()))
 	}
-	jobs, resp, err := pjc.client.SlurmApi.SlurmctldGetJobs(context.Background()).Execute()
+	jobs, resp, err := pjc.client.SlurmAPI.SlurmV0040GetJobs(context.Background()).Execute()
 	if err != nil {
 		level.Error(pjc.logger).Log("msg", "Failed to fetch jobs from slurm rest api", "err", err)
 		return &pjm, err
@@ -317,8 +317,10 @@ func (pjc *PartitionJobsCollector) metrics() (*partitionJobMetrics, error) {
 			if tres.GresGpu > 0 {
 				gpuTotal[p]++
 			}
-			switch j.GetJobState() {
-			case "PENDING":
+
+			jobstate := strings.Join(j.GetJobState(), ",")
+			switch {
+			case strings.Contains(jobstate, "PENDING"):
 				pending[p]++
 				if j.GetStateReason() == "Dependency" {
 					pendingDep[p]++
@@ -330,64 +332,70 @@ func (pjc *PartitionJobsCollector) metrics() (*partitionJobMetrics, error) {
 					}
 				}
 				waitKey := fmt.Sprintf("%s|%s", p, j.GetStateReason())
-				startTime := j.GetStartTime() - now
+				startTime := int64(0)
+				if jst, ok := j.GetStartTimeOk(); ok {
+					startTime = jst.GetNumber() - now
+				}
 				if startTime >= 0 {
 					startTimes[waitKey] = append(startTimes[waitKey], float64(startTime))
 					if tres.GresGpu > 0 {
 						gpuStartTimes[waitKey] = append(gpuStartTimes[waitKey], float64(startTime))
 					}
 				}
-				waitTime := now - j.GetSubmitTime()
+				waitTime := int64(0)
+				if jst, ok := j.GetSubmitTimeOk(); ok {
+					waitTime = now - jst.GetNumber()
+				}
 				waitTimes[waitKey] = append(waitTimes[waitKey], float64(waitTime))
 				if tres.GresGpu > 0 {
 					gpuWaitTimes[waitKey] = append(gpuWaitTimes[waitKey], float64(waitTime))
 				}
-			case "RUNNING":
+			case strings.Contains(jobstate, "RUNNING"):
 				running[p]++
 				if tresAlloc.GresGpu > 0 {
 					gpuRunning[p]++
 				}
-			case "SUSPENDED":
+			case strings.Contains(jobstate, "SUSPENDED"):
 				suspended[p]++
 				if tres.GresGpu > 0 {
 					gpuSuspended[p]++
 				}
-			case "CANCELLED":
+			case strings.Contains(jobstate, "CANCELLED"):
 				cancelled[p]++
 				if tres.GresGpu > 0 {
 					gpuCancelled[p]++
 				}
-			case "COMPLETING":
+			case strings.Contains(jobstate, "COMPLETING"):
 				completing[p]++
 				if tres.GresGpu > 0 {
 					gpuCompleting[p]++
 				}
-			case "COMPLETED":
+			case strings.Contains(jobstate, "COMPLETED"):
 				completed[p]++
 				if tres.GresGpu > 0 {
 					gpuCompleted[p]++
 				}
-			case "CONFIGURING":
+			case strings.Contains(jobstate, "CONFIGURING"):
 				configuring[p]++
 				if tres.GresGpu > 0 {
 					gpuConfiguring[p]++
 				}
-			case "FAILED":
+			case strings.Contains(jobstate, "FAILED"):
 				failed[p]++
 				if tres.GresGpu > 0 {
 					gpuFailed[p]++
 				}
-			case "TIMEOUT":
+			case strings.Contains(jobstate, "TIMEOUT"):
 				timeout[p]++
 				if tres.GresGpu > 0 {
 					gpuTimeout[p]++
 				}
-			case "PREEMPTED":
+			case strings.Contains(jobstate, "PREEMPTED"):
 				preempted[p]++
 				if tres.GresGpu > 0 {
 					gpuPreempted[p]++
 				}
-			case "NODE_FAIL":
+			case strings.Contains(jobstate, "NODE_FAIL"):
 				nodeFail[p]++
 				if tres.GresGpu > 0 {
 					gpuFailed[p]++

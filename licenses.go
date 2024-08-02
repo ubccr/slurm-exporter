@@ -69,7 +69,7 @@ func NewLicensesCollector(client *slurmrest.APIClient, logger log.Logger) *Licen
 func (lc *LicensesCollector) metrics() ([]licenseMetrics, error) {
 	var lms []licenseMetrics
 
-	licenses, resp, err := lc.client.SlurmApi.SlurmctldLicenses(context.Background()).Execute()
+	licenses, resp, err := lc.client.SlurmAPI.SlurmV0040GetLicenses(context.Background()).Execute()
 	if err != nil {
 		level.Error(lc.logger).Log("msg", "Failed to fetch licenses from slurm rest api", "err", err)
 		return lms, err
@@ -86,10 +86,9 @@ func (lc *LicensesCollector) metrics() ([]licenseMetrics, error) {
 
 	for _, l := range licenses.GetLicenses() {
 		lm := licenseMetrics{
-			name:     l.GetName(),
+			name:     l.GetLicenseName(),
 			total:    float64(l.GetTotal()),
-			used:     float64(l.GetInUse()),
-			free:     float64(l.GetAvailable()),
+			used:     float64(l.GetUsed()),
 			reserved: float64(l.GetReserved()),
 			remote:   l.GetRemote(),
 		}
