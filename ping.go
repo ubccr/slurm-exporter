@@ -34,14 +34,14 @@ const (
 type PingCollector struct {
 	client  *slurmrest.APIClient
 	logger  log.Logger
-	status  *prometheus.Desc
+	up      *prometheus.Desc
 	latency *prometheus.Desc
 }
 
 type pingMetrics struct {
 	hostname string
 	mode     string
-	status   float64
+	up       float64
 	latency  float64
 }
 
@@ -50,7 +50,7 @@ func NewPingCollector(client *slurmrest.APIClient, logger log.Logger) *PingColle
 	return &PingCollector{
 		client: client,
 		logger: log.With(logger, "collector", "ping"),
-		status: prometheus.NewDesc(prometheus.BuildFQName(namespace, pingNamespace, "status"),
+		up: prometheus.NewDesc(prometheus.BuildFQName(namespace, pingNamespace, "up"),
 			"Ping Status", pingLabels, nil),
 		latency: prometheus.NewDesc(prometheus.BuildFQName(namespace, pingNamespace, "latency"),
 			"Ping Latency", pingLabels, nil),
@@ -82,9 +82,9 @@ func (pc *PingCollector) metrics() ([]pingMetrics, error) {
 			mode:     p.GetMode(),
 		}
 		if p.GetPinged() == "UP" {
-			pm.status = float64(1)
+			pm.up = float64(1)
 		} else {
-			pm.status = float64(0)
+			pm.up = float64(0)
 		}
 		pms = append(pms, pm)
 	}
@@ -94,7 +94,7 @@ func (pc *PingCollector) metrics() ([]pingMetrics, error) {
 
 func (pc *PingCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- pc.latency
-	ch <- pc.status
+	ch <- pc.up
 }
 
 func (pc *PingCollector) Collect(ch chan<- prometheus.Metric) {
@@ -104,7 +104,7 @@ func (pc *PingCollector) Collect(ch chan<- prometheus.Metric) {
 		errValue = 1
 	}
 	for _, p := range pm {
-		ch <- prometheus.MustNewConstMetric(pc.status, prometheus.GaugeValue, p.status, p.hostname, p.mode)
+		ch <- prometheus.MustNewConstMetric(pc.up, prometheus.GaugeValue, p.up, p.hostname, p.mode)
 		ch <- prometheus.MustNewConstMetric(pc.latency, prometheus.GaugeValue, p.latency, p.hostname, p.mode)
 	}
 	ch <- prometheus.MustNewConstMetric(collectError, prometheus.GaugeValue, errValue, "pings")
