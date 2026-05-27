@@ -60,7 +60,7 @@ func NewPingCollector(client *slurmrest.APIClient, logger log.Logger) *PingColle
 func (pc *PingCollector) metrics() ([]pingMetrics, error) {
 	var pms []pingMetrics
 
-	pings, resp, err := pc.client.SlurmAPI.SlurmV0040GetPing(context.Background()).Execute()
+	pings, resp, err := pc.client.SlurmAPI.SlurmV0044GetPing(context.Background()).Execute()
 	if err != nil {
 		level.Error(pc.logger).Log("msg", "Failed to fetch pings from slurm rest api", "err", err)
 		return pms, err

@@ -193,7 +193,7 @@ func (pjc *PartitionJobsCollector) metrics() (*partitionJobMetrics, error) {
 	var pjm partitionJobMetrics
 	ignoredPattern := regexp.MustCompile(*ignorePartitions)
 
-	partitions, resp, err := pjc.client.SlurmAPI.SlurmV0040GetPartitions(context.Background()).Execute()
+	partitions, resp, err := pjc.client.SlurmAPI.SlurmV0044GetPartitions(context.Background()).Execute()
 	if err != nil {
 		level.Error(pjc.logger).Log("msg", "Failed to fetch partitions from slurm rest api", "err", err)
 		return &pjm, err
@@ -207,7 +207,7 @@ func (pjc *PartitionJobsCollector) metrics() (*partitionJobMetrics, error) {
 		}
 		return &pjm, fmt.Errorf("HTTP response contained %d errors", len(partitions.GetErrors()))
 	}
-	jobs, resp, err := pjc.client.SlurmAPI.SlurmV0040GetJobs(context.Background()).Execute()
+	jobs, resp, err := pjc.client.SlurmAPI.SlurmV0044GetJobs(context.Background()).Execute()
 	if err != nil {
 		level.Error(pjc.logger).Log("msg", "Failed to fetch jobs from slurm rest api", "err", err)
 		return &pjm, err

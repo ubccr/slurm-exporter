@@ -166,8 +166,8 @@ func (nc *NodesCollector) metrics() (*nodeMetrics, error) {
 	nodeDownReason := make(map[string]string)
 	nodeFeatures := make(map[string]string)
 
-	req := nc.client.SlurmAPI.SlurmV0040GetNodes(context.Background())
-	nodeInfo, resp, err := nc.client.SlurmAPI.SlurmV0040GetNodesExecute(req)
+	req := nc.client.SlurmAPI.SlurmV0044GetNodes(context.Background())
+	nodeInfo, resp, err := nc.client.SlurmAPI.SlurmV0044GetNodesExecute(req)
 	if err != nil {
 		level.Error(nc.logger).Log("msg", "Failed to fetch nodes from slurm rest api", "err", err)
 		return &nm, err

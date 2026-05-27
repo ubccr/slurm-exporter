@@ -152,8 +152,8 @@ github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
 github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-github.com/ubccr/slurmrest v0.0.41 h1:j1gUcD8XIbL7+KeAaUKxqsCpUhHaYLYdRsoEL5aCftQ=
-github.com/ubccr/slurmrest v0.0.41/go.mod h1:K8zXVq4P74Reaynog5lSTTFzeifL7/goe1JsfvCbViU=
+github.com/ubccr/slurmrest v0.0.44 h1:MD4/fo+yyaGNOYJTPyNCNAcR5U+hVf5Zj8cbqA86Ibg=
+github.com/ubccr/slurmrest v0.0.44/go.mod h1:K8zXVq4P74Reaynog5lSTTFzeifL7/goe1JsfvCbViU=
 github.com/xhit/go-str2duration/v2 v2.1.0 h1:lxklc02Drh6ynqX+DdPyp5pCKLUQpRT8bp8Ydu2Bstc=
 github.com/xhit/go-str2duration/v2 v2.1.0/go.mod h1:ohY8p+0f07DiV6Em5LKB0s2YpLtXVyJfNt1+BlmyAsU=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

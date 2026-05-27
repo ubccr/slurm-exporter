@@ -189,8 +189,8 @@ func NewJobsCollector(client *slurmrest.APIClient, logger log.Logger) *JobsColle
 func (jc *JobsCollector) metrics() (*jobMetrics, error) {
 	var jm jobMetrics
 
-	req := jc.client.SlurmAPI.SlurmV0040GetJobs(context.Background())
-	jobs, resp, err := jc.client.SlurmAPI.SlurmV0040GetJobsExecute(req)
+	req := jc.client.SlurmAPI.SlurmV0044GetJobs(context.Background())
+	jobs, resp, err := jc.client.SlurmAPI.SlurmV0044GetJobsExecute(req)
 	if err != nil {
 		level.Error(jc.logger).Log("msg", "Failed to fetch jobs from slurm rest api", "err", err)
 		return &jm, err

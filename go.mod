@@ -1,6 +1,6 @@
 module github.com/ubccr/slurm-exporter
 
-go 1.22
+go 1.25.0
 
 require (
 	github.com/alecthomas/kingpin/v2 v2.4.0
@@ -10,7 +10,7 @@ require (
 	github.com/prometheus/client_golang v1.19.1
 	github.com/prometheus/common v0.55.0
 	github.com/stretchr/testify v1.9.0
-	github.com/ubccr/slurmrest v0.0.41
+	github.com/ubccr/slurmrest v0.0.44
 )
 
 require (

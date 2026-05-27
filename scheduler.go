@@ -275,8 +275,8 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	rpcStats := make(map[string]rpcStat)
 	userRpcStats := make(map[string]rpcStat)
 
-	req := sc.client.SlurmAPI.SlurmV0040GetDiag(context.Background())
-	diag, resp, err := sc.client.SlurmAPI.SlurmV0040GetDiagExecute(req)
+	req := sc.client.SlurmAPI.SlurmV0044GetDiag(context.Background())
+	diag, resp, err := sc.client.SlurmAPI.SlurmV0044GetDiagExecute(req)
 	if err != nil {
 		level.Error(sc.logger).Log("msg", "Failed to diag from slurm rest api", "err", err)
 		return &dm, err
@@ -320,16 +320,20 @@ func (sc *SchedulerCollector) metrics() (*diagMetrics, error) {
 	for _, rpc := range diag.Statistics.GetRpcsByMessageType() {
 		stat := rpcStat{
 			count:     float64(rpc.GetCount()),
-			aveTime:   float64(rpc.GetAverageTime()) / 1000000,
 			totalTime: float64(rpc.GetTotalTime()) / 1000000,
+		}
+		if aveTime, ok := rpc.GetAverageTimeOk(); ok {
+			stat.aveTime = float64(*aveTime.Number) / 1000000
 		}
 		rpcStats[rpc.GetMessageType()] = stat
 	}
 	for _, userRpc := range diag.Statistics.GetRpcsByUser() {
 		stat := rpcStat{
 			count:     float64(userRpc.GetCount()),
-			aveTime:   float64(userRpc.GetAverageTime()) / 1000000,
 			totalTime: float64(userRpc.GetTotalTime()) / 1000000,
+		}
+		if aveTime, ok := userRpc.GetAverageTimeOk(); ok {
+			stat.aveTime = float64(*aveTime.Number) / 1000000
 		}
 		userRpcStats[userRpc.GetUser()] = stat
 	}

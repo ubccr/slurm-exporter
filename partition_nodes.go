@@ -142,7 +142,7 @@ func (pnc *PartitionNodesCollector) metrics() (*partitionNodeMetrics, error) {
 	var pnm partitionNodeMetrics
 	ignoredPattern := regexp.MustCompile(*ignorePartitions)
 
-	partitions, resp, err := pnc.client.SlurmAPI.SlurmV0040GetPartitions(context.Background()).Execute()
+	partitions, resp, err := pnc.client.SlurmAPI.SlurmV0044GetPartitions(context.Background()).Execute()
 	if err != nil {
 		level.Error(pnc.logger).Log("msg", "Failed to fetch partitions from slurm rest api", "err", err)
 		return &pnm, err
@@ -156,7 +156,7 @@ func (pnc *PartitionNodesCollector) metrics() (*partitionNodeMetrics, error) {
 		}
 		return &pnm, fmt.Errorf("HTTP response contained %d errors", len(partitions.GetErrors()))
 	}
-	nodeInfo, resp, err := pnc.client.SlurmAPI.SlurmV0040GetNodes(context.Background()).Execute()
+	nodeInfo, resp, err := pnc.client.SlurmAPI.SlurmV0044GetNodes(context.Background()).Execute()
 	if err != nil {
 		level.Error(pnc.logger).Log("msg", "Failed to fetch nodes from slurm rest api", "err", err)
 		return &pnm, err
